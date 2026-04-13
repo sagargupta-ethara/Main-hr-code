@@ -41,7 +41,7 @@ const DashboardLayout = () => {
               </h1>
             </div>
 
-            <nav className="hidden lg:flex items-center gap-1">
+            <nav className="hidden lg:flex items-center gap-2">
               {navLinks.map((link) => (
                 <NavLink
                   key={link.path}
@@ -49,10 +49,10 @@ const DashboardLayout = () => {
                   end={link.path === '/dashboard'}
                   data-testid={link.testId}
                   className={({ isActive }) =>
-                    `px-4 py-2 text-sm font-semibold rounded-xl transition-all ${
+                    `px-4 py-2.5 text-sm font-semibold rounded-xl transition-all ${
                       isActive
-                        ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                        ? 'bg-gradient-to-r from-cyan-500/10 to-teal-500/10 text-cyan-400 border border-cyan-500/30'
+                        : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
                     }`
                   }
                 >

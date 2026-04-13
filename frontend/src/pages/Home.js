@@ -15,7 +15,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Users, Briefcase, Calendar, CheckCircle } from 'lucide-react';
+import { Users, Briefcase, Calendar, CheckCircle, X, TrendingUp } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -25,6 +25,7 @@ const Home = () => {
   const [vendorData, setVendorData] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [modalData, setModalData] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -47,6 +48,55 @@ const Home = () => {
       console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openKPIModal = async (type) => {
+    try {
+      let data = null;
+      let title = '';
+      
+      switch(type) {
+        case 'openings':
+          const rolesRes = await axios.get(`${API_URL}/api/analytics/roles`, { withCredentials: true });
+          data = rolesRes.data;
+          title = 'Job Openings';
+          break;
+        case 'candidates':
+          const candidatesRes = await axios.get(`${API_URL}/api/candidates`, { withCredentials: true });
+          data = candidatesRes.data;
+          title = 'All Candidates';
+          break;
+        case 'interviews':
+          const interviewsRes = await axios.get(`${API_URL}/api/analytics/interviews`, { withCredentials: true });
+          data = interviewsRes.data;
+          title = 'Interviews';
+          break;
+        case 'selected':
+          const selectedRes = await axios.get(`${API_URL}/api/candidates?stage=Selected`, { withCredentials: true });
+          data = selectedRes.data;
+          title = 'Selected Candidates';
+          break;
+        case 'active':
+          const activeRes = await axios.get(`${API_URL}/api/candidates`, { withCredentials: true });
+          data = activeRes.data.filter(c => !['Rejected', 'Joined'].includes(c.current_stage));
+          title = 'Active Candidates';
+          break;
+        case 'shortlisted':
+          const shortlistedRes = await axios.get(`${API_URL}/api/candidates?stage=Shortlisted`, { withCredentials: true });
+          data = shortlistedRes.data;
+          title = 'Shortlisted Candidates';
+          break;
+        case 'rejected':
+          const rejectedRes = await axios.get(`${API_URL}/api/candidates?stage=Rejected`, { withCredentials: true });
+          data = rejectedRes.data;
+          title = 'Rejected Candidates';
+          break;
+      }
+      
+      setModalData({ type, data, title });
+    } catch (error) {
+      console.error('Error fetching modal data:', error);
     }
   };
 
@@ -73,28 +123,28 @@ const Home = () => {
           title="Total Openings"
           value={kpis?.total_openings || 0}
           icon={Briefcase}
-          onClick={() => window.location.href = '/dashboard/job-openings'}
+          onClick={() => openKPIModal('openings')}
         />
         <KPICard
           testId="kpi-total-candidates"
           title="Total Candidates"
           value={kpis?.total_candidates || 0}
           icon={Users}
-          onClick={() => window.location.href = '/dashboard/candidates'}
+          onClick={() => openKPIModal('candidates')}
         />
         <KPICard
           testId="kpi-interviews-scheduled"
           title="Interviews Scheduled"
           value={kpis?.interviews_scheduled || 0}
           icon={Calendar}
-          onClick={() => window.location.href = '/dashboard/interviews'}
+          onClick={() => openKPIModal('interviews')}
         />
         <KPICard
           testId="kpi-selected"
           title="Selected"
           value={kpis?.selected || 0}
           icon={CheckCircle}
-          onClick={() => window.location.href = '/dashboard/analysis'}
+          onClick={() => openKPIModal('selected')}
         />
       </div>
 
@@ -104,20 +154,20 @@ const Home = () => {
           title="Active Candidates"
           value={kpis?.active_candidates || 0}
           subtitle="Currently in pipeline"
-          onClick={() => window.location.href = '/dashboard/candidates'}
+          onClick={() => openKPIModal('active')}
         />
         <KPICard
           testId="kpi-shortlisted"
           title="Shortlisted"
           value={kpis?.shortlisted || 0}
           subtitle="Ready for interview"
-          onClick={() => window.location.href = '/dashboard/candidates'}
+          onClick={() => openKPIModal('shortlisted')}
         />
         <KPICard
           testId="kpi-rejected"
           title="Rejected"
           value={kpis?.rejected || 0}
-          onClick={() => window.location.href = '/dashboard/candidates'}
+          onClick={() => openKPIModal('rejected')}
         />
       </div>
 
@@ -228,6 +278,92 @@ const Home = () => {
           </table>
         </div>
       </div>
+
+      {modalData && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setModalData(null)}>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden card-glow" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+              <h2 className="text-2xl font-bold text-white">{modalData.title}</h2>
+              <button onClick={() => setModalData(null)} className="text-slate-400 hover:text-white transition-colors">
+                <X className="w-6 h-6" strokeWidth={1.5} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {modalData.type === 'openings' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {modalData.data.map((role, idx) => (
+                    <div key={idx} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                      <h3 className="text-lg font-bold text-white mb-3">{role._id}</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Total:</span>
+                          <span className="text-white font-semibold">{role.total}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Active:</span>
+                          <span className="text-cyan-400 font-semibold">{role.active}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Selected:</span>
+                          <span className="text-emerald-400 font-semibold">{role.selected}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(modalData.type === 'candidates' || modalData.type === 'active' || modalData.type === 'selected' || modalData.type === 'shortlisted' || modalData.type === 'rejected') && (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-800">
+                        <th className="text-left py-3 px-4 text-xs text-slate-500 font-bold">Name</th>
+                        <th className="text-left py-3 px-4 text-xs text-slate-500 font-bold">Role</th>
+                        <th className="text-left py-3 px-4 text-xs text-slate-500 font-bold">Vendor</th>
+                        <th className="text-left py-3 px-4 text-xs text-slate-500 font-bold">Stage</th>
+                        <th className="text-left py-3 px-4 text-xs text-slate-500 font-bold">Experience</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modalData.data.map((candidate, idx) => (
+                        <tr key={idx} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3 px-4 text-sm text-white font-medium">{candidate.candidate_name}</td>
+                          <td className="py-3 px-4 text-sm text-slate-400">{candidate.role}</td>
+                          <td className="py-3 px-4 text-sm text-slate-400">{candidate.vendor}</td>
+                          <td className="py-3 px-4"><StatusBadge status={candidate.current_stage} /></td>
+                          <td className="py-3 px-4 text-sm text-slate-400">{candidate.work_experience}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {modalData.type === 'interviews' && (
+                <div className="space-y-3">
+                  {modalData.data.map((interview, idx) => (
+                    <div key={idx} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-semibold text-white">{interview.candidate_name}</h3>
+                        <StatusBadge status={interview.status || 'Scheduled'} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div><span className="text-slate-400">Role:</span> <span className="text-white">{interview.role}</span></div>
+                        <div><span className="text-slate-400">Level:</span> <span className="text-cyan-400">{interview.level}</span></div>
+                        <div><span className="text-slate-400">Vendor:</span> <span className="text-white">{interview.vendor}</span></div>
+                        <div><span className="text-slate-400">Interviewer:</span> <span className="text-white">{interview.interviewer || 'TBD'}</span></div>
+                        <div className="col-span-2"><span className="text-slate-400">Slot:</span> <span className="text-white">{interview.slot}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

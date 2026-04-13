@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import KPICard from '../components/KPICard';
-import StatusBadge from '../components/StatusBadge';
-import { Briefcase, Users, CheckCircle, TrendingUp } from 'lucide-react';
+import { Briefcase, Users, CheckCircle, TrendingUp, Upload, X } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -10,6 +10,9 @@ const JobOpenings = () => {
   const [roleData, setRoleData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
 
   useEffect(() => {
     fetchRoleData();
@@ -28,6 +31,43 @@ const JobOpenings = () => {
     }
   };
 
+  const onDrop = async (acceptedFiles) => {
+    const file = acceptedFiles[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadMessage('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const { data } = await axios.post(`${API_URL}/api/upload-excel`, formData, {
+        withCredentials: true,
+      });
+      setUploadMessage(`Successfully uploaded! ${data.count} candidates processed.`);
+      setTimeout(() => {
+        setShowUpload(false);
+        fetchRoleData();
+      }, 2000);
+    } catch (err) {
+      const errorDetail = err.response?.data?.detail || err.message || 'Failed to upload file';
+      setUploadMessage(errorDetail);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+    },
+    maxFiles: 1,
+    disabled: uploading,
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -38,11 +78,20 @@ const JobOpenings = () => {
 
   return (
     <div className="space-y-6" data-testid="job-openings-page">
-      <div>
-        <h1 className="text-5xl font-bold text-white mb-2">Job Openings</h1>
-        <p className="text-sm text-slate-400">
-          {roleData.length} active job openings
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-5xl font-bold text-white mb-2">Job Openings</h1>
+          <p className="text-sm text-slate-400">
+            {roleData.length} active job openings
+          </p>
+        </div>
+        <button
+          onClick={() => setShowUpload(true)}
+          className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-teal-500 text-white px-6 py-3 rounded-xl hover:from-cyan-600 hover:to-teal-600 transition-all text-sm font-semibold shadow-lg shadow-cyan-500/20"
+        >
+          <Upload className="w-4 h-4" strokeWidth={1.5} />
+          Upload Data
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -120,6 +169,64 @@ const JobOpenings = () => {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {showUpload && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 card-glow">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-white">Upload Hiring Data</h2>
+              <button
+                onClick={() => setShowUpload(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-400 mb-6">
+              Upload an Excel file containing vendor hiring data. Job openings will be automatically extracted.
+            </p>
+
+            {!uploading && !uploadMessage && (
+              <div
+                {...getRootProps()}
+                className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
+                  isDragActive
+                    ? 'border-cyan-500 bg-cyan-500/5'
+                    : 'border-slate-700 hover:border-cyan-500/50 hover:bg-slate-800/50 cursor-pointer'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" strokeWidth={1.5} />
+                {isDragActive ? (
+                  <p className="text-sm text-cyan-400">Drop the file here...</p>
+                ) : (
+                  <div>
+                    <p className="text-sm text-slate-300 mb-1">
+                      Drag and drop an Excel file here, or click to browse
+                    </p>
+                    <p className="text-xs text-slate-500">Supports .xlsx and .xls files</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {uploading && (
+              <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-center">
+                <p className="text-sm text-cyan-400">Uploading and processing...</p>
+              </div>
+            )}
+
+            {uploadMessage && (
+              <div className={`p-4 rounded-xl border ${uploadMessage.includes('Success') ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+                <p className={`text-sm ${uploadMessage.includes('Success') ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {uploadMessage}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

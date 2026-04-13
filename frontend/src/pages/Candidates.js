@@ -72,6 +72,11 @@ const Candidates = () => {
     setFilters({ vendor: '', role: '', stage: '' });
   };
 
+  // Extract unique values for filters
+  const uniqueVendors = [...new Set(candidates.map(c => c.vendor).filter(Boolean))];
+  const uniqueRoles = [...new Set(candidates.map(c => c.role).filter(Boolean))];
+  const uniqueStages = [...new Set(candidates.map(c => c.current_stage).filter(Boolean))];
+
   const handleExport = async () => {
     try {
       const response = await axios.get(`${API_URL}/api/export/candidates`, {
@@ -121,6 +126,9 @@ const Candidates = () => {
         filters={filters}
         onFilterChange={handleFilterChange}
         onClearFilters={handleClearFilters}
+        vendors={uniqueVendors}
+        roles={uniqueRoles}
+        stages={uniqueStages}
       />
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden card-glow">
