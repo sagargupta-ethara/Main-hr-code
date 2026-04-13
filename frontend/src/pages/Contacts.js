@@ -5,20 +5,20 @@ const Contacts = () => {
   return (
     <div className="space-y-6" data-testid="contacts-page">
       <div>
-        <h1 className="text-4xl tracking-tight font-bold text-slate-900 mb-2">Contacts</h1>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <h1 className="text-5xl font-bold text-white mb-2">Contacts</h1>
+        <p className="text-sm text-slate-400">
           Contact management for HR SPOCs, interviewers, and vendor contacts
         </p>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-md p-12 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-50 rounded-full mb-4">
-          <Users className="w-8 h-8 text-blue-600" strokeWidth={1.5} />
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center card-glow">
+        <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-cyan-500/10 to-teal-500/10 rounded-2xl border border-cyan-500/20 mb-6">
+          <Users className="w-10 h-10 text-cyan-400" strokeWidth={1.5} />
         </div>
-        <h3 className="text-xl tracking-tight font-medium text-slate-900 mb-2">
+        <h3 className="text-2xl font-bold text-white mb-3">
           Contact Management
         </h3>
-        <p className="text-sm text-slate-700 leading-relaxed max-w-md mx-auto">
+        <p className="text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
           This module will help you manage HR SPOCs, interviewer details, vendor contacts, and
           stakeholder information.
         </p>

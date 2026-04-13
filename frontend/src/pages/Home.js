@@ -73,24 +73,28 @@ const Home = () => {
           title="Total Openings"
           value={kpis?.total_openings || 0}
           icon={Briefcase}
+          onClick={() => window.location.href = '/dashboard/job-openings'}
         />
         <KPICard
           testId="kpi-total-candidates"
           title="Total Candidates"
           value={kpis?.total_candidates || 0}
           icon={Users}
+          onClick={() => window.location.href = '/dashboard/candidates'}
         />
         <KPICard
           testId="kpi-interviews-scheduled"
           title="Interviews Scheduled"
           value={kpis?.interviews_scheduled || 0}
           icon={Calendar}
+          onClick={() => window.location.href = '/dashboard/interviews'}
         />
         <KPICard
           testId="kpi-selected"
           title="Selected"
           value={kpis?.selected || 0}
           icon={CheckCircle}
+          onClick={() => window.location.href = '/dashboard/analysis'}
         />
       </div>
 
@@ -100,17 +104,20 @@ const Home = () => {
           title="Active Candidates"
           value={kpis?.active_candidates || 0}
           subtitle="Currently in pipeline"
+          onClick={() => window.location.href = '/dashboard/candidates'}
         />
         <KPICard
           testId="kpi-shortlisted"
           title="Shortlisted"
           value={kpis?.shortlisted || 0}
           subtitle="Ready for interview"
+          onClick={() => window.location.href = '/dashboard/candidates'}
         />
         <KPICard
           testId="kpi-rejected"
           title="Rejected"
           value={kpis?.rejected || 0}
+          onClick={() => window.location.href = '/dashboard/candidates'}
         />
       </div>
 
