@@ -14,11 +14,8 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  FunnelChart,
-  Funnel,
-  LabelList,
 } from 'recharts';
-import { Users, Briefcase, Calendar, CheckCircle, XCircle, Upload } from 'lucide-react';
+import { Users, Briefcase, Calendar, CheckCircle } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -53,12 +50,12 @@ const Home = () => {
     }
   };
 
-  const COLORS = ['#3B82F6', '#F59E0B', '#8B5CF6', '#059669', '#E11D48'];
+  const COLORS = ['#22D3EE', '#14B8A6', '#8B5CF6', '#F59E0B', '#EF4444'];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-slate-600">Loading dashboard...</div>
+        <div className="text-slate-400">Loading dashboard...</div>
       </div>
     );
   }
@@ -66,8 +63,8 @@ const Home = () => {
   return (
     <div className="space-y-6" data-testid="home-dashboard">
       <div>
-        <h1 className="text-4xl tracking-tight font-bold text-slate-900 mb-2">Dashboard Overview</h1>
-        <p className="text-sm text-slate-700 leading-relaxed">Real-time hiring pipeline insights</p>
+        <h1 className="text-5xl font-bold text-white mb-2">Dashboard Overview</h1>
+        <p className="text-sm text-slate-400">Real-time hiring pipeline insights</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -114,35 +111,40 @@ const Home = () => {
           testId="kpi-rejected"
           title="Rejected"
           value={kpis?.rejected || 0}
-          icon={XCircle}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white border border-slate-200 rounded-md p-6">
-          <h3 className="text-xl tracking-tight font-medium text-slate-900 mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 card-glow">
+          <h3 className="text-xl font-bold text-white mb-4">
             Pipeline by Stage
           </h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={pipelineData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis
                 dataKey="_id"
-                tick={{ fontSize: 11 }}
-                stroke="#64748B"
+                tick={{ fontSize: 11, fill: '#94A3B8' }}
                 angle={-45}
                 textAnchor="end"
                 height={80}
               />
-              <YAxis tick={{ fontSize: 11 }} stroke="#64748B" />
-              <Tooltip />
-              <Bar dataKey="count" fill="#2563EB" radius={[4, 4, 0, 0]} />
+              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1E293B',
+                  border: '1px solid #334155',
+                  borderRadius: '12px',
+                  color: '#E2E8F0',
+                }}
+              />
+              <Bar dataKey="count" fill="#22D3EE" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-md p-6">
-          <h3 className="text-xl tracking-tight font-medium text-slate-900 mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 card-glow">
+          <h3 className="text-xl font-bold text-white mb-4">
             Vendor Contributions
           </h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -155,25 +157,33 @@ const Home = () => {
                 cy="50%"
                 outerRadius={100}
                 label={(entry) => `${entry._id}: ${entry.total}`}
+                labelStyle={{ fill: '#CBD5E1', fontSize: 12 }}
               >
                 {vendorData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1E293B',
+                  border: '1px solid #334155',
+                  borderRadius: '12px',
+                  color: '#E2E8F0',
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-md p-6">
-        <h3 className="text-xl tracking-tight font-medium text-slate-900 mb-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 card-glow">
+        <h3 className="text-xl font-bold text-white mb-4">
           Recent Candidates
         </h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-200">
+              <tr className="border-b border-slate-800">
                 <th className="text-left py-3 px-4 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">
                   Candidate
                 </th>
@@ -195,16 +205,16 @@ const Home = () => {
               {candidates.map((candidate, idx) => (
                 <tr
                   key={idx}
-                  className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                  className="border-b border-slate-800/50 hover:bg-slate-800/50 transition-colors"
                   data-testid={`recent-candidate-${idx}`}
                 >
-                  <td className="py-3 px-4 text-sm text-slate-700">{candidate.candidate_name}</td>
-                  <td className="py-3 px-4 text-sm text-slate-700">{candidate.role}</td>
-                  <td className="py-3 px-4 text-sm text-slate-700">{candidate.vendor}</td>
+                  <td className="py-3 px-4 text-sm text-slate-200 font-medium">{candidate.candidate_name}</td>
+                  <td className="py-3 px-4 text-sm text-slate-400">{candidate.role}</td>
+                  <td className="py-3 px-4 text-sm text-slate-400">{candidate.vendor}</td>
                   <td className="py-3 px-4">
                     <StatusBadge status={candidate.current_stage} />
                   </td>
-                  <td className="py-3 px-4 text-sm text-slate-700">{candidate.submission_date}</td>
+                  <td className="py-3 px-4 text-sm text-slate-400">{candidate.submission_date}</td>
                 </tr>
               ))}
             </tbody>
