@@ -1,0 +1,95 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast - Corporate Adaptation)",
+  "design_philosophy": "A command-center for vendor hiring. High information density managed through sharp, grid-aligned borders and generous internal padding. We avoid soft, generic SaaS fluff in favor of authoritative corporate clarity using IBM Blue and Slate.",
+  "colors": {
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "surface_hover": "#F1F5F9",
+    "border": "#E2E8F0",
+    "border_focus": "#2563EB",
+    "primary": "#2563EB",
+    "primary_hover": "#1D4ED8",
+    "text_primary": "#0F172A",
+    "text_secondary": "#64748B",
+    "text_tertiary": "#94A3B8",
+    "status": {
+      "new": "#3B82F6",
+      "interview": "#F59E0B",
+      "shortlisted": "#8B5CF6",
+      "selected": "#059669",
+      "rejected": "#E11D48"
+    }
+  },
+  "typography": {
+    "heading_font": "Cabinet Grotesk",
+    "body_font": "IBM Plex Sans",
+    "mono_font": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-4xl tracking-tight font-bold text-slate-900",
+      "h2": "text-2xl tracking-tight font-semibold text-slate-900",
+      "h3": "text-xl tracking-tight font-medium text-slate-900",
+      "h4": "text-lg tracking-tight font-medium text-slate-900",
+      "body": "text-sm text-slate-700 leading-relaxed",
+      "small": "text-xs text-slate-500",
+      "overline": "text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "p-2, p-4, p-6, p-8",
+    "grid_strategy": "Mode B: THE CONTROL ROOM GRID. Base grid 12 columns for fine-grained control. Dense gaps (gap-4 or gap-6). No wasted space, optical alignment on all tabular data.",
+    "container_padding": "p-6",
+    "borders": "border border-slate-200",
+    "radii": "rounded-md"
+  },
+  "surface_styles": {
+    "global": "Grid Borders (The Technical Look). Minimal shadows. Authority and truth derived from stark, bordered grids.",
+    "cards": "bg-white border border-slate-200 rounded-md overflow-hidden",
+    "cards_hover": "-translate-y-0.5 shadow-sm border-blue-200 transition-all duration-200",
+    "header": "bg-white border-b border-slate-200 sticky top-0 z-50 h-16 flex items-center"
+  },
+  "components_instructions": {
+    "buttons": "Flat, sharp. Primary: bg-blue-600 text-white hover:bg-blue-700 rounded-md. Secondary: bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-md.",
+    "tables": "Dense rows. Header text is tiny, uppercase, high tracking (overline style). Striped rows or subtle hover bg-slate-50.",
+    "kpi_cards": "Use bento grid for KPIs. Each card must be clickable (cursor-pointer). Values in JetBrains Mono or Cabinet Grotesk. Include trend indicators.",
+    "charts": "Recharts. Use sharp angles, no rounded corners on bars. Colors must map to the status palette.",
+    "filters": "Inline at the top of tables/lists. Use Shadcn select, popovers.",
+    "icons": "lucide-react, size 16 or 20, stroke width 1.5. (No extra dependencies).",
+    "testing": "All interactive elements MUST include data-testid attributes (e.g., data-testid='login-button', data-testid='nav-home')."
+  },
+  "media_assets": {
+    "logos": [
+      {
+        "category": "app_logo",
+        "url": "https://images.unsplash.com/photo-1770210217380-d78a69acdc77?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwzfHxjb21wYW55JTIwbG9nbyUyMGFic3RyYWN0fGVufDB8fHx8MTc3NjA3ODg0MHww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract logo for the hiring platform"
+      }
+    ],
+    "backgrounds": [
+      {
+        "category": "login_background",
+        "url": "https://images.unsplash.com/photo-1761229170427-487959bfb653?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBhYnN0cmFjdCUyMGNvcnBvcmF0ZSUyMGFyY2hpdGVjdHVyZSUyMGJsdWV8ZW58MHx8fHwxNzc2MDc4ODQwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Corporate architecture background for authentication pages"
+      }
+    ],
+    "avatars": [
+      {
+        "category": "user_avatar",
+        "url": "https://images.unsplash.com/photo-1762522926157-bcc04bf0b10a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc3NjA3ODg0MHww&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar for the logged-in HR Manager"
+      },
+      {
+        "category": "candidate_avatar",
+        "url": "https://images.unsplash.com/photo-1769636929388-99eff95d3bf1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc3NjA3ODg0MHww&ixlib=rb-4.1.0&q=85",
+        "description": "Example candidate avatar"
+      }
+    ]
+  },
+  "specific_page_guidelines": {
+    "navigation": "Top navigation bar (sticky). White background, 1px bottom border. Links: Home, Job Openings, Candidates, Interviews, Clients, Contacts, Analysis.",
+    "home_dashboard": "Top row: 4 KPI bento cards (Total Openings, Total Candidates, Interviews, Selected). Middle: Pipeline Funnel (Recharts) and Vendor active nominations chart. Bottom: Recent candidates list.",
+    "candidates_view": "Master table view. Multi-level filters above the table (Vendor, Role, Stage). Use 'text-xs' for data cells. Add a side-sheet or dialog for detailed timeline and feedback history.",
+    "interviews": "Kanban or dense list view grouped by date. Include quick actions for 'Add Feedback'.",
+    "analysis": "Data-heavy. Use Grid Borders strictly here. Recharts for funnel conversion and vendor performance scoring."
+  }
+}
