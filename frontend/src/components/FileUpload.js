@@ -26,9 +26,6 @@ const FileUpload = ({ onClose, onSuccess }) => {
       try {
         const { data } = await axios.post(`${API_URL}/api/upload-excel`, formData, {
           withCredentials: true,
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
         });
         setSuccess(true);
         setUploadedCount(data.count);
@@ -36,7 +33,15 @@ const FileUpload = ({ onClose, onSuccess }) => {
           onSuccess();
         }, 1500);
       } catch (err) {
-        setError(err.response?.data?.detail || 'Failed to upload file');
+        const errorDetail = err.response?.data?.detail || err.message || 'Failed to upload file';
+        console.error('Upload error:', err.response?.status, errorDetail);
+        
+        // Handle authentication errors specifically
+        if (err.response?.status === 401) {
+          setError('Session expired. Please refresh the page and log in again.');
+        } else {
+          setError(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
+        }
       } finally {
         setUploading(false);
       }

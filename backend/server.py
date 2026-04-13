@@ -583,6 +583,10 @@ async def get_interview_analytics(user: dict = Depends(get_current_user)):
 
 @api_router.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    # Only admin users can upload data
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can upload data")
+    
     if not file.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="Only Excel files are allowed")
     
