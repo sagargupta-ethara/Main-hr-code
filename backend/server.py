@@ -486,7 +486,10 @@ async def get_kpis(user: dict = Depends(get_current_user)):
         "current_stage": {"$nin": ["Rejected", "Joined"]}
     })
     
-    shortlisted = await db.candidates.count_documents({"current_stage": "Shortlisted"})
+    # Count shortlisted based on Resume Screening Status column
+    shortlisted = await db.candidates.count_documents({
+        "resume_status": {"$regex": "shortlist", "$options": "i"}
+    })
     interviews_scheduled = await db.candidates.count_documents({
         "current_stage": {"$in": ["Interview Scheduled", "L1 Interview", "L2 Interview"]}
     })
