@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import KPICard from '../components/KPICard';
-import { Briefcase, Users, CheckCircle, TrendingUp, Upload, X } from 'lucide-react';
+import { Briefcase, Users, CheckCircle, TrendingUp, Upload, X, Target, Layers, DollarSign, Clock } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -45,7 +44,7 @@ const JobOpenings = () => {
       const { data } = await axios.post(`${API_URL}/api/upload-excel`, formData, {
         withCredentials: true,
       });
-      setUploadMessage(`Successfully uploaded! ${data.count} candidates processed.`);
+      setUploadMessage(`Successfully uploaded! ${data.candidates_count} candidates and ${data.openings_count} openings processed.`);
       setTimeout(() => {
         setShowUpload(false);
         fetchRoleData();
@@ -102,73 +101,149 @@ const JobOpenings = () => {
             className="bg-slate-900 border border-slate-800 rounded-2xl p-6 card-glow cursor-pointer hover:border-cyan-500/30 transition-all duration-300"
             data-testid={`opening-card-${idx}`}
           >
-            <div className="flex items-start justify-between mb-6">
+            <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
-                <h3 className="text-2xl font-bold text-white mb-2">
+                <h3 className="text-xl font-bold text-white mb-2">
                   {role._id || 'Untitled Role'}
                 </h3>
+                {role.opening_data?.division && (
+                  <p className="text-xs text-slate-500 mb-1">{role.opening_data.division}</p>
+                )}
               </div>
               <div className="ml-2 p-3 bg-gradient-to-br from-cyan-500/10 to-teal-500/10 rounded-xl border border-cyan-500/20">
-                <Briefcase className="w-6 h-6 text-cyan-400" strokeWidth={1.5} />
+                <Briefcase className="w-5 h-5 text-cyan-400" strokeWidth={1.5} />
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-3 border-b border-slate-800">
-                <span className="text-sm text-slate-400">Total Nominations</span>
-                <span className="text-2xl font-bold text-white font-mono">{role.total}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-3 border-b border-slate-800">
-                <span className="text-sm text-slate-400">Active Candidates</span>
-                <span className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent font-mono">{role.active}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-3">
-                <span className="text-sm text-slate-400">Selected</span>
-                <span className="text-2xl font-bold text-emerald-400 font-mono">{role.selected}</span>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-slate-800">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-semibold">Selection Rate</span>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
-                  <span className="font-bold text-emerald-400">
-                    {role.total > 0 ? ((role.selected / role.total) * 100).toFixed(1) : 0}%
-                  </span>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {role.positions && (
+                <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
+                  <p className="text-xs text-slate-500 mb-1">Open Positions</p>
+                  <p className="text-lg font-bold text-cyan-400 font-mono">{role.positions}</p>
                 </div>
+              )}
+              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
+                <p className="text-xs text-slate-500 mb-1">Nominations</p>
+                <p className="text-lg font-bold text-white font-mono">{role.total}</p>
+              </div>
+              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
+                <p className="text-xs text-slate-500 mb-1">Active</p>
+                <p className="text-lg font-bold text-white font-mono">{role.active}</p>
+              </div>
+              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
+                <p className="text-xs text-slate-500 mb-1">Selected</p>
+                <p className="text-lg font-bold text-emerald-400 font-mono">{role.selected}</p>
               </div>
             </div>
+
+            {role.opening_data?.min_exp && (
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-500">Min. Experience</span>
+                <span className="text-slate-300 font-semibold">{role.opening_data.min_exp}</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
       {selectedRole && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedRole(null)}>
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-8 card-glow" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-3xl font-bold text-white mb-6">{selectedRole._id}</h2>
-            <div className="grid grid-cols-3 gap-6">
-              <div className="text-center">
-                <p className="text-sm text-slate-500 mb-2">Total Nominations</p>
-                <p className="text-4xl font-bold text-white font-mono">{selectedRole.total}</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden card-glow" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-6 border-b border-slate-800">
+              <div>
+                <h2 className="text-3xl font-bold text-white mb-2">{selectedRole._id}</h2>
+                {selectedRole.opening_data?.division && (
+                  <p className="text-slate-400">{selectedRole.opening_data.division}</p>
+                )}
               </div>
-              <div className="text-center">
-                <p className="text-sm text-slate-500 mb-2">Active</p>
-                <p className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent font-mono">{selectedRole.active}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-slate-500 mb-2">Selected</p>
-                <p className="text-4xl font-bold text-emerald-400 font-mono">{selectedRole.selected}</p>
-              </div>
+              <button onClick={() => setSelectedRole(null)} className="text-slate-400 hover:text-white transition-colors">
+                <X className="w-6 h-6" strokeWidth={1.5} />
+              </button>
             </div>
-            <button
-              onClick={() => setSelectedRole(null)}
-              className="mt-8 w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl transition-all font-semibold"
-            >
-              Close
-            </button>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(85vh-200px)] space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {selectedRole.positions && (
+                  <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                    <p className="text-xs text-slate-500 mb-2">Open Positions</p>
+                    <p className="text-3xl font-bold text-cyan-400 font-mono">{selectedRole.positions}</p>
+                  </div>
+                )}
+                <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                  <p className="text-xs text-slate-500 mb-2">Total Nominations</p>
+                  <p className="text-3xl font-bold text-white font-mono">{selectedRole.total}</p>
+                </div>
+                <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                  <p className="text-xs text-slate-500 mb-2">Active</p>
+                  <p className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent font-mono">{selectedRole.active}</p>
+                </div>
+                <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                  <p className="text-xs text-slate-500 mb-2">Selected</p>
+                  <p className="text-3xl font-bold text-emerald-400 font-mono">{selectedRole.selected}</p>
+                </div>
+              </div>
+
+              {selectedRole.opening_data && (
+                <>
+                  {selectedRole.opening_data.key_tasks && (
+                    <div className="bg-gradient-to-br from-cyan-500/5 to-teal-500/5 rounded-xl p-5 border border-cyan-500/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Target className="w-5 h-5 text-cyan-400" strokeWidth={1.5} />
+                        <h3 className="text-lg font-bold text-white">Key Tasks</h3>
+                      </div>
+                      <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedRole.opening_data.key_tasks}</p>
+                    </div>
+                  )}
+
+                  {selectedRole.opening_data.core_objectives && (
+                    <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Layers className="w-5 h-5 text-slate-400" strokeWidth={1.5} />
+                        <h3 className="text-lg font-bold text-white">Core Objectives</h3>
+                      </div>
+                      <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedRole.opening_data.core_objectives}</p>
+                    </div>
+                  )}
+
+                  {selectedRole.opening_data.key_kras && (
+                    <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800">
+                      <h3 className="text-sm font-bold text-slate-400 mb-2">Key KRAs</h3>
+                      <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedRole.opening_data.key_kras}</p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedRole.opening_data.salary_band && (
+                      <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <DollarSign className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
+                          <p className="text-xs text-slate-500">Salary Band</p>
+                        </div>
+                        <p className="text-sm font-semibold text-white">{selectedRole.opening_data.salary_band}</p>
+                      </div>
+                    )}
+                    {selectedRole.opening_data.min_exp && (
+                      <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 text-cyan-400" strokeWidth={1.5} />
+                          <p className="text-xs text-slate-500">Min. Experience</p>
+                        </div>
+                        <p className="text-sm font-semibold text-white">{selectedRole.opening_data.min_exp}</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-800">
+              <button
+                onClick={() => setSelectedRole(null)}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl transition-all font-semibold"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -187,7 +262,7 @@ const JobOpenings = () => {
             </div>
 
             <p className="text-sm text-slate-400 mb-6">
-              Upload an Excel file containing vendor hiring data. Job openings will be automatically extracted.
+              Upload an Excel file with both "Vendor Hiring" and "Open Positions" sheets.
             </p>
 
             {!uploading && !uploadMessage && (

@@ -8,7 +8,6 @@ import Home from './pages/Home';
 import JobOpenings from './pages/JobOpenings';
 import Candidates from './pages/Candidates';
 import Interviews from './pages/Interviews';
-import Clients from './pages/Clients';
 import Contacts from './pages/Contacts';
 import Analysis from './pages/Analysis';
 import { Toaster } from './components/ui/sonner';
@@ -32,7 +31,6 @@ function App() {
             <Route path="job-openings" element={<JobOpenings />} />
             <Route path="candidates" element={<Candidates />} />
             <Route path="interviews" element={<Interviews />} />
-            <Route path="clients" element={<Clients />} />
             <Route path="contacts" element={<Contacts />} />
             <Route path="analysis" element={<Analysis />} />
           </Route>

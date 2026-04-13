@@ -231,6 +231,56 @@ def determine_current_stage(row: dict) -> str:
         return "Rejected"
     return "New"
 
+async def parse_and_store_openings(file_content: bytes):
+    """Parse Open Positions sheet and store in MongoDB"""
+    try:
+        df = pd.read_excel(io.BytesIO(file_content), sheet_name='Open Positions')
+        
+        # Clear existing openings
+        await db.openings.delete_many({})
+        
+        openings = []
+        for _, row in df.iterrows():
+            # Skip empty rows
+            try:
+                if pd.isna(row.get("Team / Role")) and pd.isna(row.get("Division")):
+                    continue
+            except (KeyError, TypeError):
+                continue
+            
+            def safe_get(key, convert_func=str):
+                try:
+                    val = row.get(key) if hasattr(row, 'get') else row[key]
+                    if pd.notna(val):
+                        return convert_func(val)
+                except (KeyError, TypeError, ValueError):
+                    pass
+                return None
+            
+            opening = {
+                "id": str(ObjectId()),
+                "s_no": safe_get("S.No.", int),
+                "division": safe_get("Division"),
+                "team_role": safe_get("Team / Role"),
+                "key_tasks": safe_get("Key Tasks"),
+                "core_objectives": safe_get("Core Objectives"),
+                "key_kras": safe_get("Key KRAs"),
+                "salary_band": safe_get("Salary Band"),
+                "min_exp": safe_get("Min. Exp"),
+                "no_of_open_positions": safe_get("No. of Open Positions", int) or 1,
+            }
+            
+            openings.append(opening)
+        
+        if openings:
+            await db.openings.insert_many(openings)
+        
+        return {"success": True, "count": len(openings)}
+    except Exception as e:
+        logger.error(f"Error parsing Open Positions sheet: {str(e)}")
+        # If sheet doesn't exist, return success with 0 count
+        return {"success": True, "count": 0, "note": "No Open Positions sheet found"}
+
 async def parse_and_store_excel(file_content: bytes):
     """Parse Excel file and store candidates in MongoDB"""
     try:
@@ -541,17 +591,51 @@ async def get_vendor_analytics(user: dict = Depends(get_current_user)):
 
 @api_router.get("/analytics/roles")
 async def get_role_analytics(user: dict = Depends(get_current_user)):
-    pipeline = [
-        {"$group": {
-            "_id": "$role",
-            "total": {"$sum": 1},
-            "active": {"$sum": {"$cond": [{"$nin": ["$current_stage", ["Rejected", "Joined"]]}, 1, 0]}},
-            "selected": {"$sum": {"$cond": [{"$in": ["$current_stage", ["Selected", "Offer Released", "Joined"]]}, 1, 0]}}
-        }},
-        {"$sort": {"total": -1}}
-    ]
-    result = await db.candidates.aggregate(pipeline).to_list(100)
-    return result
+    # Check if we have openings from the Open Positions sheet
+    openings_count = await db.openings.count_documents({})
+    
+    if openings_count > 0:
+        # Use openings from the dedicated sheet
+        openings = await db.openings.find({}, {"_id": 0}).to_list(100)
+        
+        # Enrich with candidate data
+        result = []
+        for opening in openings:
+            role_name = opening.get("team_role") or opening.get("role")
+            candidates = await db.candidates.find({"role": {"$regex": role_name, "$options": "i"}}).to_list(1000)
+            
+            total = len(candidates)
+            active = len([c for c in candidates if c.get("current_stage") not in ["Rejected", "Joined"]])
+            selected = len([c for c in candidates if c.get("current_stage") in ["Selected", "Offer Released", "Joined"]])
+            
+            result.append({
+                "_id": role_name,
+                "opening_data": opening,
+                "total": total,
+                "active": active,
+                "selected": selected,
+                "positions": opening.get("no_of_open_positions", 1)
+            })
+        
+        return result
+    else:
+        # Fallback to candidate-derived roles
+        pipeline = [
+            {"$group": {
+                "_id": "$role",
+                "total": {"$sum": 1},
+                "active": {"$sum": {"$cond": [{"$nin": ["$current_stage", ["Rejected", "Joined"]]}, 1, 0]}},
+                "selected": {"$sum": {"$cond": [{"$in": ["$current_stage", ["Selected", "Offer Released", "Joined"]]}, 1, 0]}}
+            }},
+            {"$sort": {"total": -1}}
+        ]
+        result = await db.candidates.aggregate(pipeline).to_list(100)
+        return result
+
+@api_router.get("/openings")
+async def get_openings(user: dict = Depends(get_current_user)):
+    openings = await db.openings.find({}, {"_id": 0}).to_list(100)
+    return openings
 
 @api_router.get("/analytics/interviews")
 async def get_interview_analytics(user: dict = Depends(get_current_user)):
@@ -567,7 +651,10 @@ async def get_interview_analytics(user: dict = Depends(get_current_user)):
                 "level": "L1",
                 "slot": c.get("interview_slot_l1"),
                 "status": c.get("interview_status_l1"),
-                "interviewer": c.get("interviewer_name_l1")
+                "interviewer": c.get("interviewer_name_l1"),
+                "current_stage": c.get("current_stage"),
+                "feedback": c.get("interview_feedback_l1") or c.get("remarks"),
+                "remarks": c.get("remarks")
             })
         if c.get("interview_slot_l2"):
             interviews.append({
@@ -577,7 +664,10 @@ async def get_interview_analytics(user: dict = Depends(get_current_user)):
                 "level": "L2",
                 "slot": c.get("interview_slot_l2"),
                 "status": c.get("interview_status_l2"),
-                "interviewer": c.get("interviewer_name_l2")
+                "interviewer": c.get("interviewer_name_l2"),
+                "current_stage": c.get("current_stage"),
+                "feedback": c.get("interview_feedback_l2") or c.get("remarks"),
+                "remarks": c.get("remarks")
             })
     
     return interviews
@@ -594,8 +684,16 @@ async def upload_excel(file: UploadFile = File(...), user: dict = Depends(get_cu
         raise HTTPException(status_code=400, detail="Only Excel files are allowed")
     
     content = await file.read()
-    result = await parse_and_store_excel(content)
-    return result
+    
+    # Parse both sheets
+    candidates_result = await parse_and_store_excel(content)
+    openings_result = await parse_and_store_openings(content)
+    
+    return {
+        "success": True,
+        "candidates_count": candidates_result.get("count", 0),
+        "openings_count": openings_result.get("count", 0)
+    }
 
 # ============ EXPORT ENDPOINT ============
 

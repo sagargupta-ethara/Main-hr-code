@@ -20,7 +20,6 @@ const DashboardLayout = () => {
     { path: '/dashboard/job-openings', label: 'Job Openings', testId: 'nav-job-openings' },
     { path: '/dashboard/candidates', label: 'Candidates', testId: 'nav-candidates' },
     { path: '/dashboard/interviews', label: 'Interviews', testId: 'nav-interviews' },
-    { path: '/dashboard/clients', label: 'Clients', testId: 'nav-clients' },
     { path: '/dashboard/contacts', label: 'Contacts', testId: 'nav-contacts' },
     { path: '/dashboard/analysis', label: 'Analysis', testId: 'nav-analysis' },
   ];
