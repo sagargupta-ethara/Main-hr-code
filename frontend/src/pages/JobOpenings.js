@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Briefcase, Users, CheckCircle, Upload, X, Target, Layers, DollarSign, Clock, Building2 } from 'lucide-react';
+import { Briefcase, Users, CheckCircle, Upload, X, Target, Layers, DollarSign, Clock, Building2, RefreshCw } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -12,6 +12,8 @@ const JobOpenings = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
 
   useEffect(() => {
     fetchRoleData();
@@ -25,6 +27,22 @@ const JobOpenings = () => {
       console.error('Error fetching role data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncSheet = async () => {
+    setSyncing(true);
+    setSyncMessage('');
+    try {
+      const res = await axios.post(`${API_URL}/api/sync-google-openings`, {}, { withCredentials: true });
+      const count = res.data?.count || 0;
+      setSyncMessage(`Synced ${count} openings from Google Sheets`);
+      fetchRoleData();
+    } catch (err) {
+      setSyncMessage(err.response?.data?.detail || 'Sync failed - ensure the sheet is publicly accessible');
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMessage(''), 6000);
     }
   };
 
@@ -68,15 +86,36 @@ const JobOpenings = () => {
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-1">Job Openings</h1>
           <p className="text-sm text-slate-400">{roleData.length} active job openings</p>
         </div>
-        <button
-          onClick={() => setShowUpload(true)}
-          data-testid="upload-data-btn"
-          className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-teal-500 text-white px-6 py-3 rounded-xl hover:from-cyan-600 hover:to-teal-600 transition-all text-sm font-semibold shadow-lg shadow-cyan-500/20"
-        >
-          <Upload className="w-4 h-4" strokeWidth={1.5} />
-          Upload Data
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            data-testid="sync-openings-btn"
+            onClick={handleSyncSheet}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-3 rounded-xl transition-all text-sm font-semibold border border-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+            {syncing ? 'Syncing...' : 'Sync Sheet'}
+          </button>
+          <button
+            onClick={() => setShowUpload(true)}
+            data-testid="upload-data-btn"
+            className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-teal-500 text-white px-6 py-3 rounded-xl hover:from-cyan-600 hover:to-teal-600 transition-all text-sm font-semibold shadow-lg shadow-cyan-500/20"
+          >
+            <Upload className="w-4 h-4" strokeWidth={1.5} />
+            Upload Data
+          </button>
+        </div>
       </div>
+
+      {syncMessage && (
+        <div className={`px-4 py-3 rounded-xl text-sm font-medium border ${
+          syncMessage.includes('failed') || syncMessage.includes('error')
+            ? 'bg-red-500/10 text-red-400 border-red-500/30'
+            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+        }`} data-testid="sync-openings-message">
+          {syncMessage}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {roleData.map((role, idx) => (
