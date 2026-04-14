@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 class VendorHiringAPITester:
-    def __init__(self, base_url="https://vendor-hiring-hub.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://hr-dashboard-preview-6.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.session = requests.Session()
         self.tests_run = 0

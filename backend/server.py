@@ -20,6 +20,7 @@ import openpyxl
 import pandas as pd
 import io
 import xlsxwriter
+import requests
 
 # Google Sheets Configuration
 OPENINGS_SHEET_ID = "1yk8dclxEhe2NlDvkUnuRFYkIW4H3rLVUAfh8-v5SfmE"
@@ -214,8 +215,6 @@ async def sync_candidates_from_google():
         logger.error(f"Error syncing candidates from Google: {str(e)}")
         return {"success": False, "error": str(e)}
 
-import requests
-
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -384,7 +383,7 @@ def parse_excel_date(value):
             date_obj = base_date + timedelta(days=value)
             return date_obj.strftime("%Y-%m-%d")
         return str(value)
-    except:
+    except (ValueError, TypeError, OverflowError):
         return str(value) if value else None
 
 def normalize_status(status: str) -> str:
@@ -406,30 +405,34 @@ def normalize_status(status: str) -> str:
 
 def determine_current_stage(row: dict) -> str:
     """Determine current pipeline stage for a candidate"""
-    final_status = str(row.get("final_status", "")).lower() if row.get("final_status") else ""
+    final_status = str(row.get("final_status", "")).lower().strip() if row.get("final_status") else ""
     
-    # Check for selected/cleared statuses
-    if final_status and any(word in final_status for word in ["select", "clear", "cleared interview"]):
+    # Check for rejected first (explicit rejection takes priority)
+    if final_status and "reject" in final_status:
+        return "Rejected"
+    
+    # Check for selected/cleared statuses - comprehensive matching
+    selected_keywords = ["selected", "select", "cleared interview", "cleared", "clear"]
+    if final_status and any(kw in final_status for kw in selected_keywords):
         if row.get("joining_date"):
             return "Joined"
         elif row.get("offer_released"):
             return "Offer Released"
         return "Selected"
     
-    # Check for rejected
-    if final_status and "reject" in final_status:
-        return "Rejected"
-    
     # Check interview stages
-    if row.get("interview_status_l2"):
+    interview_status_l2 = str(row.get("interview_status_l2", "")).strip() if row.get("interview_status_l2") else ""
+    interview_status_l1 = str(row.get("interview_status_l1", "")).strip() if row.get("interview_status_l1") else ""
+    
+    if interview_status_l2:
         return "L2 Interview"
-    elif row.get("interview_status_l1"):
+    elif interview_status_l1:
         return "L1 Interview"
     elif row.get("interview_slot_l1") or row.get("interview_slot_l2") or row.get("assessment_round"):
         return "Interview Scheduled"
     
     # Check resume screening status
-    resume_status = str(row.get("resume_status", "")).lower() if row.get("resume_status") else ""
+    resume_status = str(row.get("resume_status", "")).lower().strip() if row.get("resume_status") else ""
     if resume_status:
         if "shortlist" in resume_status:
             return "Shortlisted"
@@ -734,10 +737,14 @@ async def get_candidate(candidate_id: str, user: dict = Depends(get_current_user
 async def get_kpis(user: dict = Depends(get_current_user)):
     total_candidates = await db.candidates.count_documents({})
     
-    # Get unique roles (openings)
-    pipeline = [{"$group": {"_id": "$role"}}, {"$count": "total"}]
-    openings_result = await db.candidates.aggregate(pipeline).to_list(1)
-    total_openings = openings_result[0]["total"] if openings_result else 0
+    # Use openings collection if available, else count unique roles
+    openings_count = await db.openings.count_documents({})
+    if openings_count > 0:
+        total_openings = openings_count
+    else:
+        pipeline = [{"$group": {"_id": "$role"}}, {"$count": "total"}]
+        openings_result = await db.candidates.aggregate(pipeline).to_list(1)
+        total_openings = openings_result[0]["total"] if openings_result else 0
     
     active_candidates = await db.candidates.count_documents({
         "current_stage": {"$nin": ["Rejected", "Joined"]}
@@ -831,7 +838,7 @@ async def get_role_analytics(user: dict = Depends(get_current_user)):
             {"$group": {
                 "_id": "$role",
                 "total": {"$sum": 1},
-                "active": {"$sum": {"$cond": [{"$nin": ["$current_stage", ["Rejected", "Joined"]]}, 1, 0]}},
+                "active": {"$sum": {"$cond": [{"$not": {"$in": ["$current_stage", ["Rejected", "Joined"]]}}, 1, 0]}},
                 "selected": {"$sum": {"$cond": [{"$in": ["$current_stage", ["Selected", "Offer Released", "Joined"]]}, 1, 0]}}
             }},
             {"$sort": {"total": -1}}
@@ -918,6 +925,160 @@ async def upload_excel(file: UploadFile = File(...), user: dict = Depends(get_cu
         "success": True,
         "candidates_count": candidates_result.get("count", 0),
         "openings_count": openings_result.get("count", 0)
+    }
+
+# ============ CONTACTS ENDPOINT ============
+
+@api_router.get("/contacts")
+async def get_contacts(user: dict = Depends(get_current_user), search: Optional[str] = None):
+    """Extract unique contacts from candidates data - HR SPOCs, vendors, interviewers"""
+    candidates = await db.candidates.find({}, {"_id": 0}).to_list(1000)
+    
+    contacts = []
+    seen = set()
+    
+    # Extract HR SPOCs
+    for c in candidates:
+        if c.get("hr_spoc"):
+            key = f"spoc-{c['hr_spoc']}"
+            if key not in seen:
+                seen.add(key)
+                contacts.append({
+                    "name": c["hr_spoc"],
+                    "type": "HR SPOC",
+                    "vendor": c.get("vendor"),
+                    "email": None,
+                    "phone": None,
+                    "roles": []
+                })
+    
+    # Extract unique vendors with contact info
+    vendor_map = {}
+    for c in candidates:
+        vendor = c.get("vendor")
+        if vendor and vendor not in vendor_map:
+            vendor_map[vendor] = {
+                "name": vendor,
+                "type": "Vendor",
+                "vendor": vendor,
+                "email": None,
+                "phone": None,
+                "roles": [],
+                "candidate_count": 0
+            }
+        if vendor:
+            role = c.get("role")
+            if role and role not in vendor_map[vendor]["roles"]:
+                vendor_map[vendor]["roles"].append(role)
+            vendor_map[vendor]["candidate_count"] += 1
+    
+    for v in vendor_map.values():
+        contacts.append(v)
+    
+    # Extract interviewers
+    for c in candidates:
+        for level in ["l1", "l2"]:
+            interviewer = c.get(f"interviewer_name_{level}")
+            if interviewer:
+                key = f"interviewer-{interviewer}"
+                if key not in seen:
+                    seen.add(key)
+                    contacts.append({
+                        "name": interviewer,
+                        "type": f"Interviewer ({level.upper()})",
+                        "vendor": None,
+                        "email": None,
+                        "phone": None,
+                        "roles": [c.get("role")] if c.get("role") else []
+                    })
+    
+    # Extract candidates with contact info
+    for c in candidates:
+        if c.get("email") or c.get("contact_number"):
+            contacts.append({
+                "name": c.get("candidate_name"),
+                "type": "Candidate",
+                "vendor": c.get("vendor"),
+                "email": c.get("email"),
+                "phone": c.get("contact_number"),
+                "roles": [c.get("role")] if c.get("role") else [],
+                "stage": c.get("current_stage")
+            })
+    
+    # Apply search filter
+    if search:
+        search_lower = search.lower()
+        contacts = [ct for ct in contacts if 
+                    (ct.get("name") and search_lower in ct["name"].lower()) or
+                    (ct.get("vendor") and search_lower in ct["vendor"].lower()) or
+                    (ct.get("type") and search_lower in ct["type"].lower()) or
+                    (ct.get("email") and search_lower in ct["email"].lower())]
+    
+    return contacts
+
+# ============ DATE-FILTERED STATS ============
+
+@api_router.get("/analytics/kpis-filtered")
+async def get_kpis_filtered(
+    user: dict = Depends(get_current_user),
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None
+):
+    """Get KPIs with optional date filtering on submission_date"""
+    query = {}
+    if from_date or to_date:
+        date_filter = {}
+        if from_date:
+            date_filter["$gte"] = from_date
+        if to_date:
+            date_filter["$lte"] = to_date
+        query["submission_date"] = date_filter
+    
+    total_candidates = await db.candidates.count_documents(query)
+    
+    # Merge query with stage filters
+    def with_query(extra):
+        merged = {**query, **extra}
+        return merged
+    
+    active_candidates = await db.candidates.count_documents(
+        with_query({"current_stage": {"$nin": ["Rejected", "Joined"]}})
+    )
+    shortlisted = await db.candidates.count_documents(
+        with_query({"resume_status": {"$regex": "shortlist", "$options": "i"}})
+    )
+    interviews_scheduled = await db.candidates.count_documents(
+        with_query({"current_stage": {"$in": ["Interview Scheduled", "L1 Interview", "L2 Interview"]}})
+    )
+    rejected = await db.candidates.count_documents(with_query({"current_stage": "Rejected"}))
+    selected = await db.candidates.count_documents(with_query({"current_stage": "Selected"}))
+    offer_released = await db.candidates.count_documents(with_query({"current_stage": "Offer Released"}))
+    joined = await db.candidates.count_documents(with_query({"current_stage": "Joined"}))
+    
+    # Total openings from openings collection (not date filtered)
+    openings_count = await db.openings.count_documents({})
+    if openings_count == 0:
+        pipeline = [{"$match": query}, {"$group": {"_id": "$role"}}, {"$count": "total"}]
+        openings_result = await db.candidates.aggregate(pipeline).to_list(1)
+        total_openings = openings_result[0]["total"] if openings_result else 0
+    else:
+        total_openings = openings_count
+    
+    vendors_pipeline = [{"$match": query}, {"$group": {"_id": "$vendor"}}, {"$count": "total"}]
+    vendors_result = await db.candidates.aggregate(vendors_pipeline).to_list(1)
+    total_vendors = vendors_result[0]["total"] if vendors_result else 0
+    
+    return {
+        "total_openings": total_openings,
+        "total_candidates": total_candidates,
+        "active_candidates": active_candidates,
+        "shortlisted": shortlisted,
+        "interviews_scheduled": interviews_scheduled,
+        "rejected": rejected,
+        "selected": selected,
+        "offer_released": offer_released,
+        "joined": joined,
+        "total_vendors": total_vendors
     }
 
 # ============ EXPORT ENDPOINT ============
