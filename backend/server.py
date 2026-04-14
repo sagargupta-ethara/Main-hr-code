@@ -791,6 +791,7 @@ async def get_pipeline_data(user: dict = Depends(get_current_user)):
 @api_router.get("/analytics/vendors")
 async def get_vendor_analytics(user: dict = Depends(get_current_user)):
     pipeline = [
+        {"$match": {"vendor": {"$ne": None}}},
         {"$group": {
             "_id": "$vendor",
             "total": {"$sum": 1},
