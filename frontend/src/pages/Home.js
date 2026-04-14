@@ -33,6 +33,8 @@ const Home = () => {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState('');
+  const [vendorList, setVendorList] = useState([]);
 
   useBodyScrollLock(!!modalData || showUploadModal);
 
@@ -44,17 +46,27 @@ const Home = () => {
     return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
   }, []);
 
-  const fetchDashboardData = useCallback(async (fDate, tDate) => {
+  // Fetch vendor list once on mount
+  useEffect(() => {
+    axios.get(`${API_URL}/api/analytics/vendor-list`, { withCredentials: true })
+      .then(res => setVendorList(res.data))
+      .catch(() => {});
+  }, []);
+
+  const fetchDashboardData = useCallback(async (fDate, tDate, vendor) => {
     try {
       const params = new URLSearchParams();
       if (fDate) params.set('from_date', fDate);
       if (tDate) params.set('to_date', tDate);
+      if (vendor) params.set('vendor', vendor);
       const qs = params.toString() ? `?${params.toString()}` : '';
+      const vendorParam = vendor ? `?vendor=${encodeURIComponent(vendor)}` : '';
+      const candidateParam = vendor ? `?vendor=${encodeURIComponent(vendor)}` : '';
       const [kpisRes, pipelineRes, vendorsRes, candidatesRes] = await Promise.all([
         axios.get(`${API_URL}/api/analytics/kpis-filtered${qs}`, { withCredentials: true }),
-        axios.get(`${API_URL}/api/analytics/pipeline`, { withCredentials: true }),
+        axios.get(`${API_URL}/api/analytics/pipeline${vendorParam}`, { withCredentials: true }),
         axios.get(`${API_URL}/api/analytics/vendors`, { withCredentials: true }),
-        axios.get(`${API_URL}/api/candidates`, { withCredentials: true }),
+        axios.get(`${API_URL}/api/candidates${candidateParam}`, { withCredentials: true }),
       ]);
       setKpis(kpisRes.data);
       setPipelineData(pipelineRes.data);
@@ -67,7 +79,7 @@ const Home = () => {
     }
   }, []);
 
-  useEffect(() => { fetchDashboardData(fromDate, toDate); }, [fromDate, toDate, fetchDashboardData]);
+  useEffect(() => { fetchDashboardData(fromDate, toDate, selectedVendor); }, [fromDate, toDate, selectedVendor, fetchDashboardData]);
 
   const handleQuickFilter = (label, days) => {
     setActiveQuickFilter(label);
@@ -83,7 +95,7 @@ const Home = () => {
       let msg = `Synced ${candidates_count} candidates, ${openings_count} openings`;
       if (warnings?.length) msg += ` (${warnings.join('; ')})`;
       setSyncMessage(msg);
-      fetchDashboardData(fromDate, toDate);
+      fetchDashboardData(fromDate, toDate, selectedVendor);
     } catch (err) {
       setSyncMessage(err.response?.data?.detail || 'Sync failed - ensure sheets are public');
     } finally {
@@ -171,13 +183,27 @@ const Home = () => {
         </div>
       )}
 
-      {/* Date Filters */}
+      {/* Filters */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5" data-testid="date-filters">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-slate-500" strokeWidth={1.5} />
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Filter</span>
           </div>
+          {/* Vendor filter */}
+          <select
+            data-testid="vendor-filter"
+            value={selectedVendor}
+            onChange={e => setSelectedVendor(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50 min-w-[140px]"
+          >
+            <option value="">All Vendors</option>
+            {vendorList.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+          {selectedVendor && (
+            <button onClick={() => setSelectedVendor('')} className="text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold">Clear</button>
+          )}
+          <div className="h-4 w-px bg-slate-700 hidden sm:block" />
           <div className="flex flex-wrap items-center gap-1.5">
             {QUICK_FILTERS.map(f => (
               <button key={f.label} data-testid={`quick-filter-${f.label}`} onClick={() => handleQuickFilter(f.label, f.days)}
@@ -194,6 +220,12 @@ const Home = () => {
               className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50" />
           </div>
         </div>
+        {selectedVendor && (
+          <div className="mt-2 pt-2 border-t border-slate-800/50">
+            <span className="text-xs text-slate-500">Showing data for: </span>
+            <span className="text-xs font-semibold text-cyan-400">{selectedVendor}</span>
+          </div>
+        )}
       </div>
 
       {/* Row 1: Active, Shortlisted, Rejected */}
@@ -360,7 +392,7 @@ const Home = () => {
         </div>
       )}
 
-      {showUploadModal && <FileUpload onClose={() => setShowUploadModal(false)} onSuccess={() => { setShowUploadModal(false); fetchDashboardData(fromDate, toDate); }} />}
+      {showUploadModal && <FileUpload onClose={() => setShowUploadModal(false)} onSuccess={() => { setShowUploadModal(false); fetchDashboardData(fromDate, toDate, selectedVendor); }} />}
     </div>
   );
 };

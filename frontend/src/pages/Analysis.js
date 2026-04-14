@@ -23,6 +23,8 @@ const Analysis = () => {
   const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [vendorDetail, setVendorDetail] = useState(null);
+  const [vendorDetailLoading, setVendorDetailLoading] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState(null);
 
   useBodyScrollLock(!!selectedVendor || !!selectedMetric);
@@ -137,7 +139,16 @@ const Analysis = () => {
             </tr></thead>
             <tbody>
               {vendorData.map((v, idx) => (
-                <tr key={idx} onClick={() => setSelectedVendor(v)} className="border-b border-slate-800/50 hover:bg-slate-800/40 transition-colors cursor-pointer" data-testid={`vendor-row-${idx}`}>
+                <tr key={idx} onClick={async () => {
+                  setSelectedVendor(v);
+                  setVendorDetail(null);
+                  setVendorDetailLoading(true);
+                  try {
+                    const res = await axios.get(`${API_URL}/api/analytics/vendor-detail?vendor_name=${encodeURIComponent(v._id)}`, { withCredentials: true });
+                    setVendorDetail(res.data);
+                  } catch(e) { console.error(e); }
+                  finally { setVendorDetailLoading(false); }
+                }} className="border-b border-slate-800/50 hover:bg-slate-800/40 transition-colors cursor-pointer" data-testid={`vendor-row-${idx}`}>
                   <td className="py-3 px-3 text-sm text-white font-semibold">{v._id}</td>
                   <td className="py-3 px-3 text-sm text-slate-300 font-mono">{v.total}</td>
                   <td className="py-3 px-3 text-sm text-violet-400 font-mono">{v.shortlisted}</td>
@@ -188,25 +199,96 @@ const Analysis = () => {
         </div>
       </div>
 
-      {/* Vendor Modal */}
+      {/* Vendor Detail Modal */}
       {selectedVendor && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedVendor(null)}>
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 card-glow" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-5">
-              <h2 className="text-2xl font-bold text-white">{selectedVendor._id}</h2>
-              <button onClick={() => setSelectedVendor(null)} className="text-slate-400 hover:text-white" data-testid="vendor-modal-close"><X className="w-5 h-5" strokeWidth={1.5} /></button>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setSelectedVendor(null); setVendorDetail(null); }}>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden card-glow" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-5 border-b border-slate-800">
+              <div>
+                <h2 className="text-xl font-bold text-white">{selectedVendor._id}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Vendor Performance Detail</p>
+              </div>
+              <button onClick={() => { setSelectedVendor(null); setVendorDetail(null); }} className="text-slate-400 hover:text-white" data-testid="vendor-modal-close"><X className="w-5 h-5" strokeWidth={1.5} /></button>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-xs text-slate-500 mb-1">Total</p><p className="text-2xl font-bold text-white font-mono">{selectedVendor.total}</p></div>
-              <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-xs text-slate-500 mb-1">Selected</p><p className="text-2xl font-bold text-emerald-400 font-mono">{selectedVendor.selected}</p></div>
-              <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-xs text-slate-500 mb-1">Shortlisted</p><p className="text-2xl font-bold text-violet-400 font-mono">{selectedVendor.shortlisted}</p></div>
-              <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-xs text-slate-500 mb-1">Rejected</p><p className="text-2xl font-bold text-red-400 font-mono">{selectedVendor.rejected}</p></div>
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-80px)] space-y-4">
+              {/* Summary metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800 text-center"><p className="text-[10px] text-slate-500 mb-1">Total</p><p className="text-2xl font-bold text-white font-mono">{vendorDetail?.total ?? selectedVendor.total}</p></div>
+                <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800 text-center"><p className="text-[10px] text-slate-500 mb-1">Shortlisted</p><p className="text-2xl font-bold text-violet-400 font-mono">{vendorDetail?.shortlisted ?? selectedVendor.shortlisted}</p></div>
+                <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800 text-center"><p className="text-[10px] text-slate-500 mb-1">Selected</p><p className="text-2xl font-bold text-emerald-400 font-mono">{vendorDetail?.selected ?? selectedVendor.selected}</p></div>
+                <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800 text-center"><p className="text-[10px] text-slate-500 mb-1">Rejected</p><p className="text-2xl font-bold text-red-400 font-mono">{vendorDetail?.rejected ?? selectedVendor.rejected}</p></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-violet-500/10 rounded-xl p-3 border border-violet-500/20 text-center"><p className="text-[10px] text-slate-500 mb-1">Shortlist Rate</p><p className="text-xl font-bold text-violet-400 font-mono">{vendorDetail?.shortlist_rate ?? selectedVendor.shortlistRate}%</p></div>
+                <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20 text-center"><p className="text-[10px] text-slate-500 mb-1">Selection Rate</p><p className="text-xl font-bold text-emerald-400 font-mono">{vendorDetail?.selection_rate ?? selectedVendor.selectionRate}%</p></div>
+              </div>
+
+              {/* Stage breakdown + Roles */}
+              {vendorDetail && (
+                <>
+                  {vendorDetail.stages?.length > 0 && (
+                    <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                      <h3 className="text-sm font-bold text-white mb-3">Stage Breakdown</h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {vendorDetail.stages.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-800">
+                            <span className="text-xs text-slate-400">{s.stage}</span>
+                            <span className="text-xs font-bold text-white font-mono">{s.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {vendorDetail.roles?.length > 0 && (
+                    <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                      <h3 className="text-sm font-bold text-white mb-3">Roles Contributed</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {vendorDetail.roles.map((r, i) => (
+                          <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-700 text-slate-300 border border-slate-600">
+                            {r.role} <span className="text-cyan-400 font-bold">{r.count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Member list */}
+                  <div className="bg-slate-800/30 rounded-xl border border-slate-800 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-800">
+                      <h3 className="text-sm font-bold text-white">Members ({vendorDetail.members?.length || 0})</h3>
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto">
+                      <table className="w-full">
+                        <thead className="sticky top-0">
+                          <tr className="bg-slate-900 border-b border-slate-800">
+                            <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Name</th>
+                            <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Role</th>
+                            <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Stage</th>
+                            <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Exp</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vendorDetail.members?.map((m, i) => (
+                            <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-800/30">
+                              <td className="py-2 px-4 text-sm text-white font-medium">{m.candidate_name}</td>
+                              <td className="py-2 px-4 text-xs text-slate-400">{m.role}</td>
+                              <td className="py-2 px-4"><span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                m.current_stage === 'Rejected' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                m.current_stage === 'Selected' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                m.current_stage === 'Shortlisted' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' :
+                                'bg-slate-700 text-slate-300 border border-slate-600'
+                              }`}>{m.current_stage}</span></td>
+                              <td className="py-2 px-4 text-xs text-slate-400">{m.work_experience || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+              {vendorDetailLoading && <div className="text-center py-6 text-sm text-slate-500">Loading vendor details...</div>}
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-violet-500/10 rounded-xl p-3 border border-violet-500/20 text-center"><p className="text-[10px] text-slate-500 mb-1">Shortlist Rate</p><p className="text-xl font-bold text-violet-400 font-mono">{selectedVendor.shortlistRate}%</p></div>
-              <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20 text-center"><p className="text-[10px] text-slate-500 mb-1">Selection Rate</p><p className="text-xl font-bold text-emerald-400 font-mono">{selectedVendor.selectionRate}%</p></div>
-            </div>
-            <button onClick={() => setSelectedVendor(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl transition-all font-semibold text-sm">Close</button>
           </div>
         </div>
       )}

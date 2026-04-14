@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Briefcase, Upload, X, Target, Layers, DollarSign, Clock, Building2, RefreshCw, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { Briefcase, Upload, X, Target, Layers, DollarSign, Clock, Building2, RefreshCw, FileText, ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -19,6 +19,8 @@ const JobOpenings = () => {
   // JD state
   const [jdUploading, setJdUploading] = useState(false);
   const [jdData, setJdData] = useState(null);
+  const [nominees, setNominees] = useState(null);
+  const [nomineesLoading, setNomineesLoading] = useState(false);
 
   useBodyScrollLock(!!selectedRole || showUpload);
   
@@ -73,10 +75,17 @@ const JobOpenings = () => {
   const handleRoleClick = async (role) => {
     setSelectedRole(role);
     setJdData(null);
+    setNominees(null);
+    setNomineesLoading(true);
     try {
-      const { data } = await axios.get(`${API_URL}/api/openings/jd?role_name=${encodeURIComponent(role._id)}`, { withCredentials: true });
-      if (data?.filename) setJdData(data);
+      const [jdRes, nomRes] = await Promise.all([
+        axios.get(`${API_URL}/api/openings/jd?role_name=${encodeURIComponent(role._id)}`, { withCredentials: true }),
+        axios.get(`${API_URL}/api/openings/nominees?role_name=${encodeURIComponent(role._id)}`, { withCredentials: true }),
+      ]);
+      if (jdRes.data?.filename) setJdData(jdRes.data);
+      setNominees(nomRes.data);
     } catch {}
+    finally { setNomineesLoading(false); }
   };
 
   const handleJdUpload = async (e) => {
@@ -252,6 +261,49 @@ const JobOpenings = () => {
                   </div>
                 </>
               )}
+
+              {/* Nominated Members */}
+              <div className="bg-slate-800/30 rounded-xl border border-slate-800 overflow-hidden" data-testid="nominees-section">
+                <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-cyan-400" strokeWidth={1.5} />
+                    Nominated Members ({nominees?.length || 0})
+                  </h3>
+                </div>
+                {nomineesLoading ? (
+                  <div className="p-4 text-center text-xs text-slate-500">Loading nominees...</div>
+                ) : nominees && nominees.length > 0 ? (
+                  <div className="max-h-[240px] overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="sticky top-0">
+                        <tr className="bg-slate-900 border-b border-slate-800">
+                          <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Name</th>
+                          <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Vendor</th>
+                          <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Stage</th>
+                          <th className="text-left py-2 px-4 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Exp</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {nominees.map((m, i) => (
+                          <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-800/30">
+                            <td className="py-2 px-4 text-sm text-white font-medium">{m.candidate_name}</td>
+                            <td className="py-2 px-4 text-xs text-slate-400">{m.vendor || '-'}</td>
+                            <td className="py-2 px-4"><span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              (m.current_stage || '').includes('Reject') ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                              (m.current_stage || '').includes('Select') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                              (m.current_stage || '').includes('Shortlist') ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' :
+                              'bg-slate-700 text-slate-300 border border-slate-600'
+                            }`}>{m.current_stage || 'New'}</span></td>
+                            <td className="py-2 px-4 text-xs text-slate-400">{m.work_experience || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-500">No nominations for this role yet</div>
+                )}
+              </div>
             </div>
           </div>
         </div>

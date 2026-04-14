@@ -775,8 +775,12 @@ async def get_kpis(user: dict = Depends(get_current_user)):
     }
 
 @api_router.get("/analytics/pipeline")
-async def get_pipeline_data(user: dict = Depends(get_current_user)):
+async def get_pipeline_data(user: dict = Depends(get_current_user), vendor: Optional[str] = None):
+    match_stage = {}
+    if vendor:
+        match_stage["vendor"] = {"$regex": f"^{vendor}$", "$options": "i"}
     pipeline = [
+        *([{"$match": match_stage}] if match_stage else []),
         {"$group": {"_id": "$current_stage", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}}
     ]
@@ -798,6 +802,59 @@ async def get_vendor_analytics(user: dict = Depends(get_current_user)):
     ]
     result = await db.candidates.aggregate(pipeline).to_list(100)
     return result
+
+@api_router.get("/analytics/vendor-list")
+async def get_vendor_list(user: dict = Depends(get_current_user)):
+    """Get list of all unique vendor names"""
+    pipeline = [
+        {"$match": {"vendor": {"$ne": None}}},
+        {"$group": {"_id": "$vendor"}},
+        {"$sort": {"_id": 1}}
+    ]
+    result = await db.candidates.aggregate(pipeline).to_list(100)
+    return [r["_id"] for r in result if r["_id"]]
+
+@api_router.get("/analytics/vendor-detail")
+async def get_vendor_detail(vendor_name: str, user: dict = Depends(get_current_user)):
+    """Detailed vendor performance with member list"""
+    query = {"vendor": {"$regex": f"^{vendor_name}$", "$options": "i"}}
+    members = await db.candidates.find(query, {"_id": 0}).to_list(1000)
+    
+    total = len(members)
+    stages = {}
+    roles = {}
+    for m in members:
+        s = m.get("current_stage", "New")
+        stages[s] = stages.get(s, 0) + 1
+        r = m.get("role")
+        if r:
+            roles[r] = roles.get(r, 0) + 1
+    
+    shortlisted = sum(1 for m in members if m.get("resume_status") and "shortlist" in m["resume_status"].lower())
+    selected = stages.get("Selected", 0) + stages.get("Offer Released", 0) + stages.get("Joined", 0)
+    rejected = stages.get("Rejected", 0)
+    
+    return {
+        "vendor": vendor_name,
+        "total": total,
+        "shortlisted": shortlisted,
+        "selected": selected,
+        "rejected": rejected,
+        "shortlist_rate": round((shortlisted / total * 100), 1) if total else 0,
+        "selection_rate": round((selected / total * 100), 1) if total else 0,
+        "stages": [{"stage": k, "count": v} for k, v in sorted(stages.items(), key=lambda x: -x[1])],
+        "roles": [{"role": k, "count": v} for k, v in sorted(roles.items(), key=lambda x: -x[1])],
+        "members": [{
+            "candidate_name": m.get("candidate_name"),
+            "role": m.get("role"),
+            "current_stage": m.get("current_stage"),
+            "resume_status": m.get("resume_status"),
+            "work_experience": m.get("work_experience"),
+            "submission_date": m.get("submission_date"),
+            "interview_status_l1": m.get("interview_status_l1"),
+            "final_status": m.get("final_status"),
+        } for m in members]
+    }
 
 @api_router.get("/analytics/roles")
 async def get_role_analytics(user: dict = Depends(get_current_user)):
@@ -874,6 +931,15 @@ async def get_role_analytics(user: dict = Depends(get_current_user)):
 async def get_openings(user: dict = Depends(get_current_user)):
     openings = await db.openings.find({}, {"_id": 0}).to_list(100)
     return openings
+
+@api_router.get("/openings/nominees")
+async def get_role_nominees(role_name: str, user: dict = Depends(get_current_user)):
+    """Get all nominated candidates for a specific role"""
+    candidates = await db.candidates.find(
+        {"role": {"$regex": role_name, "$options": "i"}},
+        {"_id": 0}
+    ).to_list(1000)
+    return candidates
 
 # ============ JD UPLOAD ============
 
@@ -1200,9 +1266,10 @@ async def get_contacts(user: dict = Depends(get_current_user), search: Optional[
 async def get_kpis_filtered(
     user: dict = Depends(get_current_user),
     from_date: Optional[str] = None,
-    to_date: Optional[str] = None
+    to_date: Optional[str] = None,
+    vendor: Optional[str] = None
 ):
-    """Get KPIs with optional date filtering on submission_date"""
+    """Get KPIs with optional date and vendor filtering"""
     query = {}
     if from_date or to_date:
         date_filter = {}
@@ -1211,13 +1278,13 @@ async def get_kpis_filtered(
         if to_date:
             date_filter["$lte"] = to_date
         query["submission_date"] = date_filter
+    if vendor:
+        query["vendor"] = {"$regex": f"^{vendor}$", "$options": "i"}
     
     total_candidates = await db.candidates.count_documents(query)
     
-    # Merge query with stage filters
     def with_query(extra):
-        merged = {**query, **extra}
-        return merged
+        return {**query, **extra}
     
     active_candidates = await db.candidates.count_documents(
         with_query({"current_stage": {"$nin": ["Rejected", "Joined"]}})
@@ -1233,14 +1300,19 @@ async def get_kpis_filtered(
     offer_released = await db.candidates.count_documents(with_query({"current_stage": "Offer Released"}))
     joined = await db.candidates.count_documents(with_query({"current_stage": "Joined"}))
     
-    # Total openings from openings collection (not date filtered)
     openings_count = await db.openings.count_documents({})
     if openings_count == 0:
         pipeline = [{"$match": query}, {"$group": {"_id": "$role"}}, {"$count": "total"}]
         openings_result = await db.candidates.aggregate(pipeline).to_list(1)
         total_openings = openings_result[0]["total"] if openings_result else 0
     else:
-        total_openings = openings_count
+        # When vendor filter is active, count roles that have candidates from this vendor
+        if vendor:
+            pipeline = [{"$match": query}, {"$group": {"_id": "$role"}}, {"$count": "total"}]
+            openings_result = await db.candidates.aggregate(pipeline).to_list(1)
+            total_openings = openings_result[0]["total"] if openings_result else 0
+        else:
+            total_openings = openings_count
     
     vendors_pipeline = [{"$match": query}, {"$group": {"_id": "$vendor"}}, {"$count": "total"}]
     vendors_result = await db.candidates.aggregate(vendors_pipeline).to_list(1)
