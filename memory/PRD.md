@@ -11,82 +11,79 @@ Build a complete vendor hiring dashboard (HR Dashboard) from scratch using a ven
 
 ## Core Pages & Features
 
+### Top Bar
+- Compact nav with logo, page links, profile icon
+- Profile icon opens dropdown with user name/email + Logout
+- No Upload Data button in top bar (moved to dashboard)
+
 ### Home (Dashboard Overview)
-- KPI cards: Total Openings, Total Candidates, Interviews Scheduled, Selected, Active, Shortlisted, Rejected
-- Date filters: Quick filter buttons (7d, 14d, 30d, 90d, All) + From/To date pickers
-- Search bar for recent candidates table
-- Google Sheets 1-click Sync button (combined sync of candidates + openings)
-- Total Openings card navigates to Job Openings tab
-- Other KPI cards open same-page modal popups
-- Pipeline by Stage chart + Vendor Contributions pie chart
+- Row 1: Active Candidates, Shortlisted, Rejected
+- Row 2: Total Openings, Total Candidates, Interviews Scheduled, Selected
+- All cards clickable with same-page popup modals (including Total Openings)
+- Sync Sheets + Upload Data buttons in header
+- Date filters: Quick filter buttons (7d/14d/30d/90d/All) + From/To date pickers
+- All Candidates scrollable table with search
+- Pipeline & Vendor charts
 
 ### Job Openings
-- Cards showing role details (division, positions, nominations, active, selected)
-- **Vendor-to-role mapping**: Each card shows vendor tags with candidate counts
-- Upload Data button for Excel import
-- Click card opens detail modal with vendor contribution progress bars, key tasks, objectives, KRAs, salary band
+- Grouped hierarchically by Division with collapsible sections
+- Role cards with positions, nominations, active, selected, vendor tags
+- Sync Sheet + Upload Data buttons
+- Modal with vendor contributions, key tasks, JD Upload, JD Summary
 
 ### Candidates
-- Filterable table (vendor, role, stage dropdowns)
-- Export to Excel button
-- Click row opens detail sheet with contact info, experience, interview history, remarks
+- Filterable table (vendor, role, stage) + Export to Excel
+- Detail sheet with contact info, experience, interview history
 
 ### Interviews
-- Table showing all interviews with candidate, role, vendor, level, normalized slot, interviewer, status
-- Search bar and L1/L2/All level filter buttons
-- **Interview slot normalization**: Handles various date formats from Excel
-- Click row opens detail modal with feedback section
+- Table with search + L1/L2/All filter
+- Normalized interview slots
+- Detail modal: shows L1 Feedback if available, otherwise Remark
 
 ### Contacts
-- Extracted from hiring data: HR SPOCs, Vendors, Interviewers, Candidates with contact info
-- Type summary cards + type filter buttons
-- Search by name/vendor/email
-- Click contact opens detail modal
+- Extracted from hiring data (HR SPOCs, Vendors, Interviewers, Candidates)
+- Type filters + Search
+- Detail modal
 
 ### Analysis (Founder-Focused)
-- Conversion metrics: Shortlist Rate, Interview Rate, Selection Rate, Offer Rate, Overall Conversion
-- Stage drop-off analysis with progress bars
-- Vendor performance table with Shortlist% and Selection%
-- Vendor detail modal on click
-- Charts: Vendor Contributions, Pipeline Stage Distribution
+- Clickable conversion metrics with popup details: Shortlist Rate, Interview Rate, Selection Rate, Offer Rate, Overall Conversion
+- Clickable stage drop-off analysis
+- Vendor performance table with detail modals
+- Charts: Vendor Breakdown (soft blue/violet/emerald), Pipeline Stages (color-coded)
 
-### Google Sheets Sync
-- Combined /api/sync-all endpoint syncs both candidates and openings
-- Last sync timestamp tracking via /api/sync/status
-- Clear error messages for private sheets
-
-## What's Been Implemented
-- [x] Full React + FastAPI + MongoDB scaffolding with JWT auth
-- [x] Dark Premium Theme across all tabs
-- [x] Excel upload for both Candidates and Open Positions sheets
-- [x] KPI cards with same-page modal popups
-- [x] Date filters (7d/14d/30d/90d/All + From/To date pickers) on Home
-- [x] Search bar on Home page
-- [x] Google Sheets 1-click Sync (working - sheets are public)
-- [x] Combined sync endpoint with last-sync tracking
-- [x] Total Openings card navigates to Job Openings tab
-- [x] Analysis page with founder-focused metrics
-- [x] Contacts page with extracted contacts, search, type filters
-- [x] Vendor-to-role mapping on Job Openings cards and modals
+## Implemented Features (Feb 14, 2026)
+- [x] Full scaffolding with JWT auth + dark premium theme
+- [x] Excel upload for Candidates + Open Positions
+- [x] Google Sheets 1-click sync (combined endpoint)
+- [x] Profile icon dropdown (replaced admin info/logout in top bar)
+- [x] Upload Data moved to dashboard beside Sync
+- [x] Reordered KPI cards (Active/Shortlisted/Rejected first)
+- [x] Total Openings opens popup (not redirect)
+- [x] All Candidates scrollable table
+- [x] Division-grouped Job Openings with collapsible sections
+- [x] JD Upload per role with summary display
+- [x] Clickable Analysis metrics + drop-offs with popup detail
+- [x] Cleaner chart colors
+- [x] Interview feedback: L1 Feedback or Remark
+- [x] Vendor-to-role mapping
 - [x] Interview slot normalization
-- [x] Interviews page search and L1/L2 filter
-- [x] Fixed "Selected" logic for "cleared"/"cleared interview rounds"
-- [x] Fixed vendor analytics to exclude null vendors
+- [x] Fixed "Selected" logic for cleared/selected/cleared interview rounds
+- [x] Contacts page with search, type filters, detail modals
+- [x] Date filters (7d/14d/30d/90d/All + From/To)
 
 ## Backlog
-- P3: File cleanup/refactoring (split server.py into routes/models)
+- P3: Refactor server.py into routes/models
+- P3: Scheduled auto-sync for Google Sheets
 
 ## Key API Endpoints
 - POST /api/auth/login, GET /api/auth/me
 - POST /api/upload-excel
-- GET /api/analytics/kpis, GET /api/analytics/kpis-filtered
+- GET /api/analytics/kpis, /api/analytics/kpis-filtered
 - GET /api/analytics/pipeline, /api/analytics/vendors, /api/analytics/roles, /api/analytics/interviews
 - GET /api/candidates, /api/contacts, /api/openings
 - GET /api/export/candidates
 - POST /api/sync-all, GET /api/sync/status
+- POST /api/openings/jd, GET /api/openings/jd
 
-## DB Schema
-- `users`: {email, password_hash, role, name, created_at}
-- `candidates`: {id, s_no, role, submission_date, candidate_name, contact_number, email, resume_link, resume_status, hr_spoc, work_experience, rel_experience, ctc, ectc, notice_period, current_location, job_location, assessment_round, interview_slot_l1, interview_status_l1, interviewer_name_l1, interview_slot_l2, interview_status_l2, interviewer_name_l2, final_status, offer_released, joining_date, remarks, vendor, current_stage}
-- `openings`: {id, s_no, division, team_role, key_tasks, core_objectives, key_kras, salary_band, min_exp, no_of_open_positions}
-- `settings`: {key, timestamp, candidates, openings} (for sync tracking)
+## DB Collections
+- `users`, `candidates`, `openings`, `settings`, `job_descriptions`
