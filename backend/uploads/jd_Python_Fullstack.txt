@@ -1,0 +1,6 @@
+Job Title: Senior Python Developer
+Requirements:
+- 5+ years Python experience
+- FastAPI, Django or Flask
+- MongoDB/PostgreSQL
+- REST API design

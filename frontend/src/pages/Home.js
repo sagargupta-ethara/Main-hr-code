@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { Users, Briefcase, Calendar, CheckCircle, X, Search, RefreshCw, Filter, Upload } from 'lucide-react';
 import FileUpload from '../components/FileUpload';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -32,6 +33,8 @@ const Home = () => {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
+
+  useBodyScrollLock(!!modalData || showUploadModal);
 
   const getDateRange = useCallback((days) => {
     if (!days) return { from: '', to: '' };
@@ -237,8 +240,8 @@ const Home = () => {
       </div>
 
       {/* All Candidates - Scrollable */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl card-glow">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-5 pb-0">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl card-glow overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-5 pb-3">
           <h3 className="text-base font-bold text-white">All Candidates <span className="text-sm font-normal text-slate-500">({filteredCandidates.length})</span></h3>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" strokeWidth={1.5} />
@@ -246,30 +249,34 @@ const Home = () => {
               className="w-full pl-9 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/50" />
           </div>
         </div>
-        <div className="overflow-x-auto max-h-[420px] overflow-y-auto p-5 pt-3">
+        <div className="relative">
           <table className="w-full">
-            <thead className="sticky top-0 bg-slate-900 z-10">
-              <tr className="border-b border-slate-800">
-                <th className="text-left py-2.5 px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Candidate</th>
-                <th className="text-left py-2.5 px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Role</th>
-                <th className="text-left py-2.5 px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Vendor</th>
-                <th className="text-left py-2.5 px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Stage</th>
-                <th className="text-left py-2.5 px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Date</th>
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-900 border-b border-slate-800">
+                <th className="text-left py-2.5 px-5 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold bg-slate-900">Candidate</th>
+                <th className="text-left py-2.5 px-5 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold bg-slate-900">Role</th>
+                <th className="text-left py-2.5 px-5 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold bg-slate-900">Vendor</th>
+                <th className="text-left py-2.5 px-5 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold bg-slate-900">Stage</th>
+                <th className="text-left py-2.5 px-5 text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold bg-slate-900">Date</th>
               </tr>
             </thead>
-            <tbody>
+          </table>
+          <div className="max-h-[400px] overflow-y-auto">
+            <table className="w-full">
+              <tbody>
               {filteredCandidates.map((c, idx) => (
                 <tr key={idx} className="border-b border-slate-800/40 hover:bg-slate-800/40 transition-colors" data-testid={`candidate-row-${idx}`}>
-                  <td className="py-2.5 px-3 text-sm text-slate-200 font-medium">{c.candidate_name}</td>
-                  <td className="py-2.5 px-3 text-sm text-slate-400">{c.role}</td>
-                  <td className="py-2.5 px-3 text-sm text-slate-400">{c.vendor}</td>
-                  <td className="py-2.5 px-3"><StatusBadge status={c.current_stage} /></td>
-                  <td className="py-2.5 px-3 text-sm text-slate-400">{c.submission_date}</td>
+                  <td className="py-2.5 px-5 text-sm text-slate-200 font-medium">{c.candidate_name}</td>
+                  <td className="py-2.5 px-5 text-sm text-slate-400">{c.role}</td>
+                  <td className="py-2.5 px-5 text-sm text-slate-400">{c.vendor}</td>
+                  <td className="py-2.5 px-5"><StatusBadge status={c.current_stage} /></td>
+                  <td className="py-2.5 px-5 text-sm text-slate-400">{c.submission_date}</td>
                 </tr>
               ))}
               {filteredCandidates.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-sm text-slate-500">No candidates found</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { ArrowDown, X, Users, TrendingUp } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -24,6 +25,8 @@ const Analysis = () => {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [selectedMetric, setSelectedMetric] = useState(null);
 
+  useBodyScrollLock(!!selectedVendor || !!selectedMetric);
+  
   useEffect(() => { fetchAnalysisData(); }, []);
 
   const fetchAnalysisData = async () => {

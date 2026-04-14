@@ -1,0 +1,11 @@
+Job Description for Software Engineer
+
+Requirements:
+- 3+ years of experience in Python
+- Experience with FastAPI and MongoDB
+- Strong problem-solving skills
+
+Responsibilities:
+- Design and implement backend services
+- Write clean, maintainable code
+- Collaborate with team members

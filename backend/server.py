@@ -891,24 +891,20 @@ async def upload_jd(
     
     # Extract text summary from the file
     summary = ""
-    if file.filename.endswith(('.txt', '.md')):
+    fname = (file.filename or "").lower()
+    if fname.endswith(('.txt', '.md')):
         summary = content.decode('utf-8', errors='ignore')[:2000]
-    elif file.filename.endswith(('.pdf',)):
-        try:
-            import fitz
-            doc = fitz.open(stream=content, filetype="pdf")
-            for page in doc:
-                summary += page.get_text()
-            summary = summary[:2000]
-        except Exception:
-            summary = "(PDF uploaded - install PyMuPDF for text extraction)"
-    elif file.filename.endswith(('.docx',)):
-        try:
-            from docx import Document as DocxDocument
-            doc = DocxDocument(io.BytesIO(content))
-            summary = "\n".join([p.text for p in doc.paragraphs])[:2000]
-        except Exception:
-            summary = "(DOCX uploaded - install python-docx for text extraction)"
+    elif fname.endswith('.pdf'):
+        import fitz
+        doc = fitz.open(stream=content, filetype="pdf")
+        for page in doc:
+            summary += page.get_text()
+        doc.close()
+        summary = summary[:2000]
+    elif fname.endswith('.docx'):
+        from docx import Document as DocxDocument
+        doc = DocxDocument(io.BytesIO(content))
+        summary = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])[:2000]
     else:
         summary = f"File uploaded: {file.filename}"
     

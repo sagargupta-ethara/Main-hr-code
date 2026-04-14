@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, Search, Phone, Mail, Building2, UserCheck, X } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -19,6 +20,8 @@ const Contacts = () => {
   const [filterType, setFilterType] = useState('all');
   const [selectedContact, setSelectedContact] = useState(null);
 
+  useBodyScrollLock(!!selectedContact);
+  
   useEffect(() => {
     fetchContacts();
   }, []);

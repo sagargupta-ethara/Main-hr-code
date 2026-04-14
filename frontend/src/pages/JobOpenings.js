@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Briefcase, Upload, X, Target, Layers, DollarSign, Clock, Building2, RefreshCw, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -19,6 +20,8 @@ const JobOpenings = () => {
   const [jdUploading, setJdUploading] = useState(false);
   const [jdData, setJdData] = useState(null);
 
+  useBodyScrollLock(!!selectedRole || showUpload);
+  
   useEffect(() => { fetchRoleData(); }, []);
 
   const fetchRoleData = async () => {

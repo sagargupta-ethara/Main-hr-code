@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import StatusBadge from '../components/StatusBadge';
 import { Calendar, User, Video, X, MessageSquare, Search, Filter } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -12,6 +13,8 @@ const Interviews = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState('all');
 
+  useBodyScrollLock(!!selectedInterview);
+  
   useEffect(() => {
     fetchInterviews();
   }, []);
