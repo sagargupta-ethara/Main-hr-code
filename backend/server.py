@@ -21,6 +21,201 @@ import pandas as pd
 import io
 import xlsxwriter
 
+# Google Sheets Configuration
+OPENINGS_SHEET_ID = "1yk8dclxEhe2NlDvkUnuRFYkIW4H3rLVUAfh8-v5SfmE"
+MAIN_SHEET_ID = "1WY2IDKF7H7mUXNJ3ryDIZqavB3p1dcLKmVfydl7E7b4"
+GOOGLE_CREDENTIALS_PATH = "/app/backend/google_credentials.json"
+
+# ============ GOOGLE SHEETS SYNC ============
+
+async def fetch_google_sheet_as_df(sheet_id: str, gid: int = 0):
+    """Fetch Google Sheet as pandas DataFrame"""
+    try:
+        # Try CSV export first (works for public sheets)
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+        response = requests.get(csv_url, timeout=10)
+        
+        if response.status_code == 200:
+            return pd.read_csv(io.StringIO(response.text))
+        
+        # If private, try with service account (if configured)
+        import os
+        if os.path.exists(GOOGLE_CREDENTIALS_PATH):
+            import gspread
+            from google.oauth2.service_account import Credentials
+            
+            scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+            creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS_PATH, scopes=scopes)
+            client = gspread.authorize(creds)
+            
+            sheet = client.open_by_key(sheet_id)
+            worksheet = sheet.get_worksheet(gid)
+            data = worksheet.get_all_records()
+            return pd.DataFrame(data)
+        else:
+            raise Exception("Sheet is private and no credentials configured")
+            
+    except Exception as e:
+        logger.error(f"Error fetching Google Sheet: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Could not fetch Google Sheet: {str(e)}")
+
+async def sync_openings_from_google():
+    """Sync openings from Google Sheets"""
+    try:
+        df = await fetch_google_sheet_as_df(OPENINGS_SHEET_ID, 0)
+        
+        # Clear existing openings
+        await db.openings.delete_many({})
+        
+        openings = []
+        for _, row in df.iterrows():
+            try:
+                if pd.isna(row.get("Team / Role")) and pd.isna(row.get("Division")):
+                    continue
+            except (KeyError, TypeError):
+                continue
+            
+            def safe_get(key, convert_func=str):
+                try:
+                    val = row.get(key) if hasattr(row, 'get') else row[key]
+                    if pd.notna(val):
+                        return convert_func(val)
+                except (KeyError, TypeError, ValueError):
+                    pass
+                return None
+            
+            opening = {
+                "id": str(ObjectId()),
+                "s_no": safe_get("S.No.", int),
+                "division": safe_get("Division"),
+                "team_role": safe_get("Team / Role"),
+                "key_tasks": safe_get("Key Tasks"),
+                "core_objectives": safe_get("Core Objectives"),
+                "key_kras": safe_get("Key KRAs"),
+                "salary_band": safe_get("Salary Band"),
+                "min_exp": safe_get("Min. Exp"),
+                "no_of_open_positions": safe_get("No. of Open Positions", int) or 1,
+            }
+            
+            openings.append(opening)
+        
+        if openings:
+            await db.openings.insert_many(openings)
+        
+        return {"success": True, "count": len(openings)}
+    except Exception as e:
+        logger.error(f"Error syncing openings from Google: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+async def sync_candidates_from_google():
+    """Sync main candidate data from Google Sheets"""
+    try:
+        df = await fetch_google_sheet_as_df(MAIN_SHEET_ID, 0)
+        
+        # Map columns (same as Excel parsing)
+        column_mapping = {
+            "S.No": "s_no",
+            "Role/Position": "role",
+            "Profile Submission Date": "submission_date",
+            "Candidate Name": "candidate_name",
+            "Contact Number": "contact_number",
+            "Mail ID": "email",
+            "Resume Link": "resume_link",
+            "Resume Screening Status (To be filled by Hiring Manager)": "resume_status",
+            "HR SPOC": "hr_spoc",
+            "Work experience": "work_experience",
+            "Rel Experience": "rel_experience",
+            "CTC": "ctc",
+            "ECTC": "ectc",
+            "Notice Period": "notice_period",
+            "Current Location": "current_location",
+            "Job Location": "job_location",
+            "Assessment Round": "assessment_round",
+            "Interview Slot": "interview_slot_l1",
+            "Interview Status (L1)": "interview_status_l1",
+            "Interviewer Name (L1)": "interviewer_name_l1",
+            "Interview Status (L2)": "interview_status_l2",
+            "Interviewer Name (L2)": "interviewer_name_l2",
+            "Final Status (Selected/Rejected)": "final_status",
+            "Offer Released": "offer_released",
+            "Joining Date": "joining_date",
+            "Remarks": "remarks",
+            "Vendor": "vendor"
+        }
+        
+        # Handle L2 interview slot column
+        if len([col for col in df.columns if "Interview Slot" in str(col)]) > 1:
+            cols = df.columns.tolist()
+            for i, col in enumerate(cols):
+                if "Interview Slot" in str(col):
+                    if i > 15:
+                        df.rename(columns={col: "Interview Slot (L2)"}, inplace=True)
+        
+        df.rename(columns=column_mapping, inplace=True)
+        df.rename(columns={"Interview Slot (L2)": "interview_slot_l2"}, inplace=True)
+        
+        # Clear existing candidates
+        await db.candidates.delete_many({})
+        
+        candidates = []
+        for _, row in df.iterrows():
+            if pd.isna(row.get("candidate_name")):
+                continue
+            
+            def safe_get(key, convert_func=str):
+                try:
+                    val = row.get(key) if hasattr(row, 'get') else row[key]
+                    if pd.notna(val):
+                        return convert_func(val)
+                except (KeyError, TypeError, ValueError):
+                    pass
+                return None
+            
+            candidate = {
+                "id": str(ObjectId()),
+                "s_no": safe_get("s_no", int),
+                "role": safe_get("role"),
+                "submission_date": parse_excel_date(safe_get("submission_date")),
+                "candidate_name": safe_get("candidate_name"),
+                "contact_number": safe_get("contact_number"),
+                "email": safe_get("email"),
+                "resume_link": safe_get("resume_link"),
+                "resume_status": safe_get("resume_status"),
+                "hr_spoc": safe_get("hr_spoc"),
+                "work_experience": safe_get("work_experience"),
+                "rel_experience": safe_get("rel_experience"),
+                "ctc": safe_get("ctc"),
+                "ectc": safe_get("ectc"),
+                "notice_period": safe_get("notice_period"),
+                "current_location": safe_get("current_location"),
+                "job_location": safe_get("job_location"),
+                "assessment_round": safe_get("assessment_round"),
+                "interview_slot_l1": safe_get("interview_slot_l1"),
+                "interview_status_l1": safe_get("interview_status_l1"),
+                "interviewer_name_l1": safe_get("interviewer_name_l1"),
+                "interview_slot_l2": safe_get("interview_slot_l2"),
+                "interview_status_l2": safe_get("interview_status_l2"),
+                "interviewer_name_l2": safe_get("interviewer_name_l2"),
+                "final_status": safe_get("final_status"),
+                "offer_released": safe_get("offer_released"),
+                "joining_date": parse_excel_date(safe_get("joining_date")),
+                "remarks": safe_get("remarks"),
+                "vendor": safe_get("vendor"),
+            }
+            
+            candidate["current_stage"] = determine_current_stage(candidate)
+            candidates.append(candidate)
+        
+        if candidates:
+            await db.candidates.insert_many(candidates)
+        
+        return {"success": True, "count": len(candidates)}
+    except Exception as e:
+        logger.error(f"Error syncing candidates from Google: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+import requests
+
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -211,24 +406,36 @@ def normalize_status(status: str) -> str:
 
 def determine_current_stage(row: dict) -> str:
     """Determine current pipeline stage for a candidate"""
-    if row.get("final_status") and "select" in str(row.get("final_status")).lower():
+    final_status = str(row.get("final_status", "")).lower() if row.get("final_status") else ""
+    
+    # Check for selected/cleared statuses
+    if final_status and any(word in final_status for word in ["select", "clear", "cleared interview"]):
         if row.get("joining_date"):
             return "Joined"
         elif row.get("offer_released"):
             return "Offer Released"
         return "Selected"
-    elif row.get("final_status") and "reject" in str(row.get("final_status")).lower():
+    
+    # Check for rejected
+    if final_status and "reject" in final_status:
         return "Rejected"
-    elif row.get("interview_status_l2"):
+    
+    # Check interview stages
+    if row.get("interview_status_l2"):
         return "L2 Interview"
     elif row.get("interview_status_l1"):
         return "L1 Interview"
-    elif row.get("interview_slot_l1") or row.get("assessment_round"):
+    elif row.get("interview_slot_l1") or row.get("interview_slot_l2") or row.get("assessment_round"):
         return "Interview Scheduled"
-    elif row.get("resume_status") and "shortlist" in str(row.get("resume_status")).lower():
-        return "Shortlisted"
-    elif row.get("resume_status") and "reject" in str(row.get("resume_status")).lower():
-        return "Rejected"
+    
+    # Check resume screening status
+    resume_status = str(row.get("resume_status", "")).lower() if row.get("resume_status") else ""
+    if resume_status:
+        if "shortlist" in resume_status:
+            return "Shortlisted"
+        elif "reject" in resume_status:
+            return "Rejected"
+    
     return "New"
 
 async def parse_and_store_openings(file_content: bytes):
@@ -673,6 +880,24 @@ async def get_interview_analytics(user: dict = Depends(get_current_user)):
     return interviews
 
 # ============ FILE UPLOAD ENDPOINT ============
+
+@api_router.post("/sync-google-sheets")
+async def sync_from_google_sheets(user: dict = Depends(get_current_user)):
+    """Sync main candidate data from Google Sheets"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can sync data")
+    
+    result = await sync_candidates_from_google()
+    return result
+
+@api_router.post("/sync-google-openings")
+async def sync_openings_from_google_endpoint(user: dict = Depends(get_current_user)):
+    """Sync openings from Google Sheets"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can sync data")
+    
+    result = await sync_openings_from_google()
+    return result
 
 @api_router.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
