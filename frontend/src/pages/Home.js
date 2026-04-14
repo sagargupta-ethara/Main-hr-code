@@ -98,19 +98,17 @@ const Home = () => {
     setSyncing(true);
     setSyncMessage('');
     try {
-      const [candRes, openRes] = await Promise.all([
-        axios.post(`${API_URL}/api/sync-google-sheets`, {}, { withCredentials: true }),
-        axios.post(`${API_URL}/api/sync-google-openings`, {}, { withCredentials: true }),
-      ]);
-      const candCount = candRes.data?.count || 0;
-      const openCount = openRes.data?.count || 0;
-      setSyncMessage(`Synced ${candCount} candidates, ${openCount} openings`);
+      const res = await axios.post(`${API_URL}/api/sync-all`, {}, { withCredentials: true });
+      const { candidates_count, openings_count, warnings } = res.data;
+      let msg = `Synced ${candidates_count} candidates, ${openings_count} openings`;
+      if (warnings?.length) msg += ` (${warnings.join('; ')})`;
+      setSyncMessage(msg);
       fetchDashboardData(fromDate, toDate);
     } catch (err) {
-      setSyncMessage(err.response?.data?.detail || 'Sync failed - ensure sheets are public');
+      setSyncMessage(err.response?.data?.detail || 'Sync failed - ensure sheets are public (Share > Anyone with link > Viewer)');
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncMessage(''), 5000);
+      setTimeout(() => setSyncMessage(''), 8000);
     }
   };
 

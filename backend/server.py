@@ -30,35 +30,30 @@ GOOGLE_CREDENTIALS_PATH = "/app/backend/google_credentials.json"
 # ============ GOOGLE SHEETS SYNC ============
 
 async def fetch_google_sheet_as_df(sheet_id: str, gid: int = 0):
-    """Fetch Google Sheet as pandas DataFrame"""
+    """Fetch Google Sheet as pandas DataFrame (public sheets via CSV export)"""
+    csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
     try:
-        # Try CSV export first (works for public sheets)
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-        response = requests.get(csv_url, timeout=10)
-        
-        if response.status_code == 200:
+        response = requests.get(csv_url, timeout=15, allow_redirects=True)
+        if response.status_code == 200 and "text/csv" in response.headers.get("Content-Type", ""):
             return pd.read_csv(io.StringIO(response.text))
-        
-        # If private, try with service account (if configured)
-        import os
-        if os.path.exists(GOOGLE_CREDENTIALS_PATH):
-            import gspread
-            from google.oauth2.service_account import Credentials
-            
-            scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-            creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS_PATH, scopes=scopes)
-            client = gspread.authorize(creds)
-            
-            sheet = client.open_by_key(sheet_id)
-            worksheet = sheet.get_worksheet(gid)
-            data = worksheet.get_all_records()
-            return pd.DataFrame(data)
+        elif response.status_code == 200:
+            # Google may return HTML login page for private sheets
+            if "<html" in response.text[:200].lower():
+                raise Exception("Sheet appears to be private. Please make it publicly accessible (View-only) via Share settings.")
+            return pd.read_csv(io.StringIO(response.text))
+        elif response.status_code == 401 or response.status_code == 403:
+            raise Exception("Sheet is private (HTTP 401/403). Please go to Google Sheets > Share > Change to 'Anyone with the link' > Viewer.")
         else:
-            raise Exception("Sheet is private and no credentials configured")
-            
+            raise Exception(f"Failed to fetch sheet (HTTP {response.status_code})")
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=408, detail="Google Sheets request timed out. Please try again.")
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=502, detail="Could not connect to Google Sheets. Check internet connectivity.")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching Google Sheet: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Could not fetch Google Sheet: {str(e)}")
+        logger.error(f"Error fetching Google Sheet {sheet_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 async def sync_openings_from_google():
     """Sync openings from Google Sheets"""
@@ -363,7 +358,7 @@ async def seed_admin():
         f.write("## Admin Account\n")
         f.write(f"- Email: {admin_email}\n")
         f.write(f"- Password: {admin_password}\n")
-        f.write(f"- Role: admin\n\n")
+        f.write("- Role: admin\n\n")
         f.write("## Auth Endpoints\n")
         f.write("- POST /api/auth/register\n")
         f.write("- POST /api/auth/login\n")
@@ -813,15 +808,23 @@ async def get_role_analytics(user: dict = Depends(get_current_user)):
         # Use openings from the dedicated sheet
         openings = await db.openings.find({}, {"_id": 0}).to_list(100)
         
-        # Enrich with candidate data
+        # Enrich with candidate data + vendor mapping
         result = []
         for opening in openings:
             role_name = opening.get("team_role") or opening.get("role")
-            candidates = await db.candidates.find({"role": {"$regex": role_name, "$options": "i"}}).to_list(1000)
+            candidates = await db.candidates.find({"role": {"$regex": role_name, "$options": "i"}}, {"_id": 0}).to_list(1000)
             
             total = len(candidates)
             active = len([c for c in candidates if c.get("current_stage") not in ["Rejected", "Joined"]])
             selected = len([c for c in candidates if c.get("current_stage") in ["Selected", "Offer Released", "Joined"]])
+            
+            # Vendor-to-role mapping
+            vendor_counts = {}
+            for c in candidates:
+                v = c.get("vendor")
+                if v:
+                    vendor_counts[v] = vendor_counts.get(v, 0) + 1
+            vendors = [{"name": k, "count": v} for k, v in sorted(vendor_counts.items(), key=lambda x: -x[1])]
             
             result.append({
                 "_id": role_name,
@@ -829,22 +832,42 @@ async def get_role_analytics(user: dict = Depends(get_current_user)):
                 "total": total,
                 "active": active,
                 "selected": selected,
-                "positions": opening.get("no_of_open_positions", 1)
+                "positions": opening.get("no_of_open_positions", 1),
+                "vendors": vendors
             })
         
         return result
     else:
-        # Fallback to candidate-derived roles
-        pipeline = [
-            {"$group": {
-                "_id": "$role",
-                "total": {"$sum": 1},
-                "active": {"$sum": {"$cond": [{"$not": {"$in": ["$current_stage", ["Rejected", "Joined"]]}}, 1, 0]}},
-                "selected": {"$sum": {"$cond": [{"$in": ["$current_stage", ["Selected", "Offer Released", "Joined"]]}, 1, 0]}}
-            }},
-            {"$sort": {"total": -1}}
-        ]
-        result = await db.candidates.aggregate(pipeline).to_list(100)
+        # Fallback to candidate-derived roles with vendor mapping
+        all_candidates = await db.candidates.find({}, {"_id": 0, "role": 1, "vendor": 1, "current_stage": 1}).to_list(1000)
+        
+        role_map = {}
+        for c in all_candidates:
+            role = c.get("role")
+            if not role:
+                continue
+            if role not in role_map:
+                role_map[role] = {"total": 0, "active": 0, "selected": 0, "vendor_counts": {}}
+            role_map[role]["total"] += 1
+            if c.get("current_stage") not in ["Rejected", "Joined"]:
+                role_map[role]["active"] += 1
+            if c.get("current_stage") in ["Selected", "Offer Released", "Joined"]:
+                role_map[role]["selected"] += 1
+            v = c.get("vendor")
+            if v:
+                role_map[role]["vendor_counts"][v] = role_map[role]["vendor_counts"].get(v, 0) + 1
+        
+        result = []
+        for role, data in sorted(role_map.items(), key=lambda x: -x[1]["total"]):
+            vendors = [{"name": k, "count": v} for k, v in sorted(data["vendor_counts"].items(), key=lambda x: -x[1])]
+            result.append({
+                "_id": role,
+                "total": data["total"],
+                "active": data["active"],
+                "selected": data["selected"],
+                "vendors": vendors
+            })
+        
         return result
 
 @api_router.get("/openings")
@@ -852,32 +875,74 @@ async def get_openings(user: dict = Depends(get_current_user)):
     openings = await db.openings.find({}, {"_id": 0}).to_list(100)
     return openings
 
+def normalize_interview_slot(slot_value):
+    """Normalize interview slot to a readable date/time format"""
+    if not slot_value:
+        return None
+    slot = str(slot_value).strip()
+    if not slot:
+        return None
+    
+    # Try parsing common date formats
+    date_formats = [
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+        "%d-%m-%Y %H:%M", "%d-%m-%Y", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+        "%m/%d/%Y %H:%M", "%m/%d/%Y", "%d %b %Y %H:%M", "%d %b %Y",
+        "%b %d, %Y %H:%M", "%b %d, %Y", "%d-%b-%Y", "%d %B %Y",
+    ]
+    for fmt in date_formats:
+        try:
+            dt = datetime.strptime(slot, fmt)
+            return dt.strftime("%b %d, %Y %I:%M %p") if dt.hour or dt.minute else dt.strftime("%b %d, %Y")
+        except ValueError:
+            continue
+    
+    # Try Excel serial date
+    try:
+        num = float(slot)
+        if 40000 < num < 50000:  # Reasonable Excel date range
+            base_date = datetime(1899, 12, 30)
+            dt = base_date + timedelta(days=num)
+            frac = num - int(num)
+            if frac > 0:
+                hours = int(frac * 24)
+                minutes = int((frac * 24 - hours) * 60)
+                dt = dt.replace(hour=hours, minute=minutes)
+                return dt.strftime("%b %d, %Y %I:%M %p")
+            return dt.strftime("%b %d, %Y")
+    except (ValueError, TypeError):
+        pass
+    
+    return slot  # Return as-is if no format matches
+
 @api_router.get("/analytics/interviews")
 async def get_interview_analytics(user: dict = Depends(get_current_user)):
     candidates = await db.candidates.find({}, {"_id": 0}).to_list(1000)
     
     interviews = []
     for c in candidates:
-        if c.get("interview_slot_l1"):
+        if c.get("interview_slot_l1") or c.get("interview_status_l1"):
             interviews.append({
                 "candidate_name": c.get("candidate_name"),
                 "role": c.get("role"),
                 "vendor": c.get("vendor"),
                 "level": "L1",
-                "slot": c.get("interview_slot_l1"),
+                "slot": normalize_interview_slot(c.get("interview_slot_l1")) or c.get("interview_slot_l1"),
+                "slot_raw": c.get("interview_slot_l1"),
                 "status": c.get("interview_status_l1"),
                 "interviewer": c.get("interviewer_name_l1"),
                 "current_stage": c.get("current_stage"),
                 "feedback": c.get("interview_feedback_l1") or c.get("remarks"),
                 "remarks": c.get("remarks")
             })
-        if c.get("interview_slot_l2"):
+        if c.get("interview_slot_l2") or c.get("interview_status_l2"):
             interviews.append({
                 "candidate_name": c.get("candidate_name"),
                 "role": c.get("role"),
                 "vendor": c.get("vendor"),
                 "level": "L2",
-                "slot": c.get("interview_slot_l2"),
+                "slot": normalize_interview_slot(c.get("interview_slot_l2")) or c.get("interview_slot_l2"),
+                "slot_raw": c.get("interview_slot_l2"),
                 "status": c.get("interview_status_l2"),
                 "interviewer": c.get("interviewer_name_l2"),
                 "current_stage": c.get("current_stage"),
@@ -894,8 +959,13 @@ async def sync_from_google_sheets(user: dict = Depends(get_current_user)):
     """Sync main candidate data from Google Sheets"""
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only administrators can sync data")
-    
     result = await sync_candidates_from_google()
+    if result.get("success"):
+        await db.settings.update_one(
+            {"key": "last_sync"},
+            {"$set": {"key": "last_sync", "timestamp": datetime.now(timezone.utc).isoformat(), "type": "candidates", "count": result.get("count", 0)}},
+            upsert=True
+        )
     return result
 
 @api_router.post("/sync-google-openings")
@@ -903,9 +973,54 @@ async def sync_openings_from_google_endpoint(user: dict = Depends(get_current_us
     """Sync openings from Google Sheets"""
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only administrators can sync data")
-    
     result = await sync_openings_from_google()
     return result
+
+@api_router.post("/sync-all")
+async def sync_all_from_google(user: dict = Depends(get_current_user)):
+    """Combined sync: candidates + openings from Google Sheets"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can sync data")
+    
+    errors = []
+    cand_count = 0
+    open_count = 0
+    
+    try:
+        cand_result = await sync_candidates_from_google()
+        cand_count = cand_result.get("count", 0)
+    except Exception as e:
+        errors.append(f"Candidates: {str(e)}")
+    
+    try:
+        open_result = await sync_openings_from_google()
+        open_count = open_result.get("count", 0)
+    except Exception as e:
+        errors.append(f"Openings: {str(e)}")
+    
+    timestamp = datetime.now(timezone.utc).isoformat()
+    await db.settings.update_one(
+        {"key": "last_sync"},
+        {"$set": {"key": "last_sync", "timestamp": timestamp, "candidates": cand_count, "openings": open_count}},
+        upsert=True
+    )
+    
+    if errors and cand_count == 0 and open_count == 0:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
+    
+    return {
+        "success": True,
+        "candidates_count": cand_count,
+        "openings_count": open_count,
+        "timestamp": timestamp,
+        "warnings": errors if errors else None
+    }
+
+@api_router.get("/sync/status")
+async def get_sync_status(user: dict = Depends(get_current_user)):
+    """Get last sync timestamp"""
+    setting = await db.settings.find_one({"key": "last_sync"}, {"_id": 0})
+    return setting or {"key": "last_sync", "timestamp": None}
 
 @api_router.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
