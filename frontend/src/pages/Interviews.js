@@ -206,24 +206,20 @@ const Interviews = () => {
                 <StatusBadge status={selectedInterview.status || 'Scheduled'} />
               </div>
 
-              {selectedInterview.feedback && (
+              {/* Feedback: show L1 Feedback if available, otherwise Remark */}
+              {(selectedInterview.feedback || selectedInterview.remarks) ? (
                 <div className="bg-gradient-to-br from-cyan-500/5 to-teal-500/5 rounded-xl p-5 border border-cyan-500/20">
                   <div className="flex items-center gap-2 mb-3">
                     <MessageSquare className="w-5 h-5 text-cyan-400" strokeWidth={1.5} />
-                    <h3 className="text-base font-bold text-white">Interviewer Feedback</h3>
+                    <h3 className="text-base font-bold text-white">
+                      {selectedInterview.feedback ? `${selectedInterview.level} Feedback` : 'Remark'}
+                    </h3>
                   </div>
-                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedInterview.feedback}</p>
+                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {selectedInterview.feedback || selectedInterview.remarks}
+                  </p>
                 </div>
-              )}
-
-              {selectedInterview.remarks && selectedInterview.remarks !== selectedInterview.feedback && (
-                <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800">
-                  <h3 className="text-sm font-bold text-slate-400 mb-2">Additional Remarks</h3>
-                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedInterview.remarks}</p>
-                </div>
-              )}
-
-              {!selectedInterview.feedback && !selectedInterview.remarks && (
+              ) : (
                 <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800 text-center">
                   <MessageSquare className="w-8 h-8 text-slate-600 mx-auto mb-2" strokeWidth={1.5} />
                   <p className="text-sm text-slate-500">No feedback available yet</p>

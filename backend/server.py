@@ -875,6 +875,72 @@ async def get_openings(user: dict = Depends(get_current_user)):
     openings = await db.openings.find({}, {"_id": 0}).to_list(100)
     return openings
 
+# ============ JD UPLOAD ============
+
+@api_router.post("/openings/jd")
+async def upload_jd(
+    role_name: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    """Upload a Job Description file for a specific role"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can upload JDs")
+    
+    content = await file.read()
+    
+    # Extract text summary from the file
+    summary = ""
+    if file.filename.endswith(('.txt', '.md')):
+        summary = content.decode('utf-8', errors='ignore')[:2000]
+    elif file.filename.endswith(('.pdf',)):
+        try:
+            import fitz
+            doc = fitz.open(stream=content, filetype="pdf")
+            for page in doc:
+                summary += page.get_text()
+            summary = summary[:2000]
+        except Exception:
+            summary = "(PDF uploaded - install PyMuPDF for text extraction)"
+    elif file.filename.endswith(('.docx',)):
+        try:
+            from docx import Document as DocxDocument
+            doc = DocxDocument(io.BytesIO(content))
+            summary = "\n".join([p.text for p in doc.paragraphs])[:2000]
+        except Exception:
+            summary = "(DOCX uploaded - install python-docx for text extraction)"
+    else:
+        summary = f"File uploaded: {file.filename}"
+    
+    # Save to uploads dir
+    safe_name = role_name.replace("/", "_").replace(" ", "_")
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "txt"
+    save_path = f"/app/backend/uploads/jd_{safe_name}.{ext}"
+    with open(save_path, "wb") as f:
+        f.write(content)
+    
+    # Store JD info in MongoDB
+    await db.job_descriptions.update_one(
+        {"role_name": role_name},
+        {"$set": {
+            "role_name": role_name,
+            "filename": file.filename,
+            "file_path": save_path,
+            "summary": summary.strip(),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "uploaded_by": user.get("email")
+        }},
+        upsert=True
+    )
+    
+    return {"success": True, "filename": file.filename, "summary": summary.strip()[:500]}
+
+@api_router.get("/openings/jd")
+async def get_jd(role_name: str, user: dict = Depends(get_current_user)):
+    """Get JD info for a specific role"""
+    jd = await db.job_descriptions.find_one({"role_name": role_name}, {"_id": 0})
+    return jd or {"role_name": role_name, "filename": None, "summary": None}
+
 def normalize_interview_slot(slot_value):
     """Normalize interview slot to a readable date/time format"""
     if not slot_value:

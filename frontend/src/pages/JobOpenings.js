@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Briefcase, Users, CheckCircle, Upload, X, Target, Layers, DollarSign, Clock, Building2, RefreshCw } from 'lucide-react';
+import { Briefcase, Upload, X, Target, Layers, DollarSign, Clock, Building2, RefreshCw, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -14,299 +14,241 @@ const JobOpenings = () => {
   const [uploadMessage, setUploadMessage] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+  const [collapsedDivisions, setCollapsedDivisions] = useState({});
+  // JD state
+  const [jdUploading, setJdUploading] = useState(false);
+  const [jdData, setJdData] = useState(null);
 
-  useEffect(() => {
-    fetchRoleData();
-  }, []);
+  useEffect(() => { fetchRoleData(); }, []);
 
   const fetchRoleData = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/analytics/roles`, { withCredentials: true });
       setRoleData(data);
-    } catch (error) {
-      console.error('Error fetching role data:', error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error('Error fetching role data:', error); }
+    finally { setLoading(false); }
   };
 
   const handleSyncSheet = async () => {
-    setSyncing(true);
-    setSyncMessage('');
+    setSyncing(true); setSyncMessage('');
     try {
       const res = await axios.post(`${API_URL}/api/sync-google-openings`, {}, { withCredentials: true });
-      const count = res.data?.count || 0;
-      setSyncMessage(`Synced ${count} openings from Google Sheets`);
+      setSyncMessage(`Synced ${res.data?.count || 0} openings`);
       fetchRoleData();
-    } catch (err) {
-      setSyncMessage(err.response?.data?.detail || 'Sync failed - ensure the sheet is publicly accessible');
-    } finally {
-      setSyncing(false);
-      setTimeout(() => setSyncMessage(''), 6000);
-    }
+    } catch (err) { setSyncMessage(err.response?.data?.detail || 'Sync failed'); }
+    finally { setSyncing(false); setTimeout(() => setSyncMessage(''), 6000); }
   };
 
   const onDrop = async (acceptedFiles) => {
-    const file = acceptedFiles[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadMessage('');
-    const formData = new FormData();
-    formData.append('file', file);
+    const file = acceptedFiles[0]; if (!file) return;
+    setUploading(true); setUploadMessage('');
+    const formData = new FormData(); formData.append('file', file);
     try {
       const { data } = await axios.post(`${API_URL}/api/upload-excel`, formData, { withCredentials: true });
-      setUploadMessage(`Successfully uploaded! ${data.candidates_count} candidates and ${data.openings_count} openings processed.`);
-      setTimeout(() => { setShowUpload(false); fetchRoleData(); }, 2000);
-    } catch (err) {
-      setUploadMessage(err.response?.data?.detail || err.message || 'Failed to upload file');
-    } finally {
-      setUploading(false);
-    }
+      setUploadMessage(`Uploaded! ${data.candidates_count} candidates, ${data.openings_count} openings.`);
+      setTimeout(() => { setShowUpload(false); setUploadMessage(''); fetchRoleData(); }, 2000);
+    } catch (err) { setUploadMessage(err.response?.data?.detail || 'Upload failed'); }
+    finally { setUploading(false); }
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'] },
-    maxFiles: 1,
-    disabled: uploading,
+    onDrop, accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'] }, maxFiles: 1, disabled: uploading,
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-slate-400">Loading openings...</div>
-      </div>
-    );
-  }
+  // Group roles by division
+  const grouped = {};
+  roleData.forEach(role => {
+    const div = role.opening_data?.division || 'Other Roles';
+    if (!grouped[div]) grouped[div] = [];
+    grouped[div].push(role);
+  });
+  const divisions = Object.keys(grouped).sort((a, b) => a === 'Other Roles' ? 1 : b === 'Other Roles' ? -1 : a.localeCompare(b));
+
+  const toggleDivision = (div) => setCollapsedDivisions(prev => ({ ...prev, [div]: !prev[div] }));
+
+  // Handle role click: fetch JD, open modal
+  const handleRoleClick = async (role) => {
+    setSelectedRole(role);
+    setJdData(null);
+    try {
+      const { data } = await axios.get(`${API_URL}/api/openings/jd?role_name=${encodeURIComponent(role._id)}`, { withCredentials: true });
+      if (data?.filename) setJdData(data);
+    } catch {}
+  };
+
+  const handleJdUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file || !selectedRole) return;
+    setJdUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('role_name', selectedRole._id);
+    try {
+      const { data } = await axios.post(`${API_URL}/api/openings/jd?role_name=${encodeURIComponent(selectedRole._id)}`, formData, { withCredentials: true });
+      setJdData({ filename: data.filename, summary: data.summary, uploaded_at: new Date().toISOString() });
+    } catch (err) { console.error('JD upload failed:', err); }
+    finally { setJdUploading(false); }
+  };
+
+  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="text-slate-400">Loading openings...</div></div>;
 
   return (
-    <div className="space-y-6" data-testid="job-openings-page">
+    <div className="space-y-5" data-testid="job-openings-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-1">Job Openings</h1>
-          <p className="text-sm text-slate-400">{roleData.length} active job openings</p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-0.5">Job Openings</h1>
+          <p className="text-sm text-slate-400">{roleData.length} positions across {divisions.length} division{divisions.length !== 1 ? 's' : ''}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            data-testid="sync-openings-btn"
-            onClick={handleSyncSheet}
-            disabled={syncing}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-3 rounded-xl transition-all text-sm font-semibold border border-slate-700 disabled:opacity-50"
-          >
+        <div className="flex items-center gap-2">
+          <button data-testid="sync-openings-btn" onClick={handleSyncSheet} disabled={syncing}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl transition-all text-sm font-semibold border border-slate-700 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} strokeWidth={1.5} />
             {syncing ? 'Syncing...' : 'Sync Sheet'}
           </button>
-          <button
-            onClick={() => setShowUpload(true)}
-            data-testid="upload-data-btn"
-            className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-teal-500 text-white px-6 py-3 rounded-xl hover:from-cyan-600 hover:to-teal-600 transition-all text-sm font-semibold shadow-lg shadow-cyan-500/20"
-          >
-            <Upload className="w-4 h-4" strokeWidth={1.5} />
-            Upload Data
+          <button onClick={() => setShowUpload(true)} data-testid="upload-data-btn"
+            className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-teal-500 text-white px-4 py-2 rounded-xl hover:from-cyan-600 hover:to-teal-600 transition-all text-sm font-semibold shadow-lg shadow-cyan-500/20">
+            <Upload className="w-4 h-4" strokeWidth={1.5} /> Upload Data
           </button>
         </div>
       </div>
 
       {syncMessage && (
-        <div className={`px-4 py-3 rounded-xl text-sm font-medium border ${
-          syncMessage.includes('failed') || syncMessage.includes('error')
-            ? 'bg-red-500/10 text-red-400 border-red-500/30'
-            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-        }`} data-testid="sync-openings-message">
-          {syncMessage}
-        </div>
+        <div className={`px-4 py-2.5 rounded-xl text-sm font-medium border ${syncMessage.includes('failed') ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>{syncMessage}</div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {roleData.map((role, idx) => (
-          <div
-            key={idx}
-            onClick={() => setSelectedRole(role)}
-            className="bg-slate-900 border border-slate-800 rounded-2xl p-6 card-glow cursor-pointer hover:border-cyan-500/30 transition-all duration-300"
-            data-testid={`opening-card-${idx}`}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-bold text-white mb-1 truncate">{role._id || 'Untitled Role'}</h3>
-                {role.opening_data?.division && (
-                  <p className="text-xs text-slate-500">{role.opening_data.division}</p>
-                )}
-              </div>
-              <div className="ml-2 p-3 bg-gradient-to-br from-cyan-500/10 to-teal-500/10 rounded-xl border border-cyan-500/20 flex-shrink-0">
-                <Briefcase className="w-5 h-5 text-cyan-400" strokeWidth={1.5} />
-              </div>
-            </div>
+      {/* Division-grouped openings */}
+      {divisions.map(div => (
+        <div key={div} className="space-y-3">
+          <button onClick={() => toggleDivision(div)} className="flex items-center gap-2 w-full text-left group" data-testid={`division-toggle-${div}`}>
+            {collapsedDivisions[div]
+              ? <ChevronRight className="w-4 h-4 text-cyan-400 transition-transform" strokeWidth={2} />
+              : <ChevronDown className="w-4 h-4 text-cyan-400 transition-transform" strokeWidth={2} />}
+            <h2 className="text-base font-bold text-white group-hover:text-cyan-400 transition-colors">{div}</h2>
+            <span className="text-xs text-slate-500 font-mono ml-1">({grouped[div].length})</span>
+            <div className="flex-1 border-t border-slate-800/60 ml-3" />
+          </button>
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {role.positions && (
-                <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
-                  <p className="text-xs text-slate-500 mb-1">Open Positions</p>
-                  <p className="text-lg font-bold text-cyan-400 font-mono">{role.positions}</p>
-                </div>
-              )}
-              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
-                <p className="text-xs text-slate-500 mb-1">Nominations</p>
-                <p className="text-lg font-bold text-white font-mono">{role.total}</p>
-              </div>
-              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
-                <p className="text-xs text-slate-500 mb-1">Active</p>
-                <p className="text-lg font-bold text-white font-mono">{role.active}</p>
-              </div>
-              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-800">
-                <p className="text-xs text-slate-500 mb-1">Selected</p>
-                <p className="text-lg font-bold text-emerald-400 font-mono">{role.selected}</p>
-              </div>
-            </div>
-
-            {/* Vendor-to-Role Mapping */}
-            {role.vendors && role.vendors.length > 0 && (
-              <div className="pt-3 border-t border-slate-800">
-                <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold mb-2 flex items-center gap-1">
-                  <Building2 className="w-3 h-3" strokeWidth={1.5} />
-                  Vendors
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {role.vendors.slice(0, 4).map((v, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                      {v.name}
-                      <span className="text-cyan-400 font-mono font-bold">{v.count}</span>
-                    </span>
-                  ))}
-                  {role.vendors.length > 4 && (
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800 text-slate-500 border border-slate-700">
-                      +{role.vendors.length - 4} more
-                    </span>
+          {!collapsedDivisions[div] && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pl-6">
+              {grouped[div].map((role, idx) => (
+                <div key={idx} onClick={() => handleRoleClick(role)}
+                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 card-glow cursor-pointer hover:border-cyan-500/30 transition-all duration-200"
+                  data-testid={`opening-card-${role._id}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-sm font-bold text-white leading-snug pr-2">{role._id || 'Untitled Role'}</h3>
+                    <div className="p-2 bg-gradient-to-br from-cyan-500/10 to-teal-500/10 rounded-lg border border-cyan-500/20 flex-shrink-0">
+                      <Briefcase className="w-4 h-4 text-cyan-400" strokeWidth={1.5} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {role.positions && <div className="bg-slate-800/30 rounded-lg p-2.5 border border-slate-800"><p className="text-[10px] text-slate-500 mb-0.5">Positions</p><p className="text-base font-bold text-cyan-400 font-mono">{role.positions}</p></div>}
+                    <div className="bg-slate-800/30 rounded-lg p-2.5 border border-slate-800"><p className="text-[10px] text-slate-500 mb-0.5">Nominations</p><p className="text-base font-bold text-white font-mono">{role.total}</p></div>
+                    <div className="bg-slate-800/30 rounded-lg p-2.5 border border-slate-800"><p className="text-[10px] text-slate-500 mb-0.5">Active</p><p className="text-base font-bold text-white font-mono">{role.active}</p></div>
+                    <div className="bg-slate-800/30 rounded-lg p-2.5 border border-slate-800"><p className="text-[10px] text-slate-500 mb-0.5">Selected</p><p className="text-base font-bold text-emerald-400 font-mono">{role.selected}</p></div>
+                  </div>
+                  {role.vendors?.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800">
+                      <div className="flex flex-wrap gap-1">
+                        {role.vendors.slice(0, 3).map((v, i) => (
+                          <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                            {v.name} <span className="text-cyan-400 font-bold">{v.count}</span>
+                          </span>
+                        ))}
+                        {role.vendors.length > 3 && <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-500 border border-slate-700">+{role.vendors.length - 3}</span>}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
-
-            {role.opening_data?.min_exp && (
-              <div className="pt-3 mt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-500">Min. Experience</span>
-                <span className="text-slate-300 font-semibold">{role.opening_data.min_exp}</span>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Role Detail Modal */}
-      {selectedRole && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedRole(null)}>
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden card-glow" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between p-6 border-b border-slate-800">
-              <div>
-                <h2 className="text-2xl font-bold text-white mb-1">{selectedRole._id}</h2>
-                {selectedRole.opening_data?.division && (
-                  <p className="text-slate-400 text-sm">{selectedRole.opening_data.division}</p>
-                )}
-              </div>
-              <button onClick={() => setSelectedRole(null)} className="text-slate-400 hover:text-white transition-colors" data-testid="opening-modal-close">
-                <X className="w-6 h-6" strokeWidth={1.5} />
-              </button>
+              ))}
             </div>
-            
-            <div className="p-6 overflow-y-auto max-h-[calc(85vh-200px)] space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {selectedRole.positions && (
-                  <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
-                    <p className="text-xs text-slate-500 mb-2">Open Positions</p>
-                    <p className="text-3xl font-bold text-cyan-400 font-mono">{selectedRole.positions}</p>
-                  </div>
-                )}
-                <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
-                  <p className="text-xs text-slate-500 mb-2">Total Nominations</p>
-                  <p className="text-3xl font-bold text-white font-mono">{selectedRole.total}</p>
-                </div>
-                <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
-                  <p className="text-xs text-slate-500 mb-2">Active</p>
-                  <p className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent font-mono">{selectedRole.active}</p>
-                </div>
-                <div className="text-center bg-slate-800/30 rounded-xl p-4 border border-slate-800">
-                  <p className="text-xs text-slate-500 mb-2">Selected</p>
-                  <p className="text-3xl font-bold text-emerald-400 font-mono">{selectedRole.selected}</p>
-                </div>
+          )}
+        </div>
+      ))}
+
+      {/* Role Detail Modal with JD Upload */}
+      {selectedRole && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setSelectedRole(null); setJdData(null); }}>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden card-glow" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-5 border-b border-slate-800">
+              <div>
+                <h2 className="text-xl font-bold text-white mb-0.5">{selectedRole._id}</h2>
+                {selectedRole.opening_data?.division && <p className="text-slate-400 text-sm">{selectedRole.opening_data.division}</p>}
+              </div>
+              <button onClick={() => { setSelectedRole(null); setJdData(null); }} className="text-slate-400 hover:text-white transition-colors" data-testid="opening-modal-close"><X className="w-5 h-5" strokeWidth={1.5} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-160px)] space-y-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {selectedRole.positions && <div className="text-center bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-[10px] text-slate-500 mb-1">Positions</p><p className="text-2xl font-bold text-cyan-400 font-mono">{selectedRole.positions}</p></div>}
+                <div className="text-center bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-[10px] text-slate-500 mb-1">Nominations</p><p className="text-2xl font-bold text-white font-mono">{selectedRole.total}</p></div>
+                <div className="text-center bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-[10px] text-slate-500 mb-1">Active</p><p className="text-2xl font-bold text-cyan-400 font-mono">{selectedRole.active}</p></div>
+                <div className="text-center bg-slate-800/30 rounded-xl p-3 border border-slate-800"><p className="text-[10px] text-slate-500 mb-1">Selected</p><p className="text-2xl font-bold text-emerald-400 font-mono">{selectedRole.selected}</p></div>
               </div>
 
-              {/* Vendor Mapping Section */}
-              {selectedRole.vendors && selectedRole.vendors.length > 0 && (
-                <div className="bg-gradient-to-br from-cyan-500/5 to-teal-500/5 rounded-xl p-5 border border-cyan-500/20">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Building2 className="w-5 h-5 text-cyan-400" strokeWidth={1.5} />
-                    <h3 className="text-lg font-bold text-white">Vendor Contributions</h3>
-                  </div>
+              {/* Vendors */}
+              {selectedRole.vendors?.length > 0 && (
+                <div className="bg-gradient-to-br from-cyan-500/5 to-teal-500/5 rounded-xl p-4 border border-cyan-500/20">
+                  <div className="flex items-center gap-2 mb-3"><Building2 className="w-4 h-4 text-cyan-400" strokeWidth={1.5} /><h3 className="text-sm font-bold text-white">Vendor Contributions</h3></div>
                   <div className="space-y-2">
                     {selectedRole.vendors.map((v, i) => {
                       const pct = selectedRole.total > 0 ? ((v.count / selectedRole.total) * 100).toFixed(0) : 0;
-                      return (
-                        <div key={i} className="flex items-center gap-3">
-                          <span className="text-sm text-slate-300 font-medium w-32 truncate">{v.name}</span>
-                          <div className="flex-1 bg-slate-800 rounded-full h-2">
-                            <div className="bg-gradient-to-r from-cyan-500 to-teal-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="text-sm font-mono text-cyan-400 font-bold w-16 text-right">{v.count} ({pct}%)</span>
-                        </div>
-                      );
+                      return (<div key={i} className="flex items-center gap-3"><span className="text-xs text-slate-300 font-medium w-28 truncate">{v.name}</span><div className="flex-1 bg-slate-800 rounded-full h-1.5"><div className="bg-gradient-to-r from-cyan-500 to-teal-500 h-1.5 rounded-full" style={{width:`${pct}%`}}/></div><span className="text-xs font-mono text-cyan-400 font-bold w-14 text-right">{v.count} ({pct}%)</span></div>);
                     })}
                   </div>
                 </div>
               )}
 
+              {/* JD Upload & Summary */}
+              <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-cyan-400" strokeWidth={1.5} /><h3 className="text-sm font-bold text-white">Job Description</h3></div>
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg cursor-pointer transition-colors text-xs font-semibold" data-testid="jd-upload-btn">
+                    <Upload className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    {jdUploading ? 'Uploading...' : 'Upload JD'}
+                    <input type="file" className="hidden" accept=".pdf,.docx,.txt,.md,.doc" onChange={handleJdUpload} disabled={jdUploading} />
+                  </label>
+                </div>
+                {jdData?.summary ? (
+                  <div>
+                    <p className="text-xs text-slate-500 mb-2">Uploaded: {jdData.filename}</p>
+                    <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700 max-h-40 overflow-y-auto">
+                      <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{jdData.summary}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No JD uploaded yet. Upload a PDF, DOCX, or TXT file.</p>
+                )}
+              </div>
+
+              {/* Opening details */}
               {selectedRole.opening_data && (
                 <>
                   {selectedRole.opening_data.key_tasks && (
-                    <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Target className="w-5 h-5 text-cyan-400" strokeWidth={1.5} />
-                        <h3 className="text-base font-bold text-white">Key Tasks</h3>
-                      </div>
+                    <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                      <div className="flex items-center gap-2 mb-2"><Target className="w-4 h-4 text-cyan-400" strokeWidth={1.5} /><h3 className="text-sm font-bold text-white">Key Tasks</h3></div>
                       <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedRole.opening_data.key_tasks}</p>
                     </div>
                   )}
                   {selectedRole.opening_data.core_objectives && (
-                    <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Layers className="w-5 h-5 text-slate-400" strokeWidth={1.5} />
-                        <h3 className="text-base font-bold text-white">Core Objectives</h3>
-                      </div>
+                    <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
+                      <div className="flex items-center gap-2 mb-2"><Layers className="w-4 h-4 text-slate-400" strokeWidth={1.5} /><h3 className="text-sm font-bold text-white">Core Objectives</h3></div>
                       <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedRole.opening_data.core_objectives}</p>
                     </div>
                   )}
-                  {selectedRole.opening_data.key_kras && (
-                    <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-800">
-                      <h3 className="text-sm font-bold text-slate-400 mb-2">Key KRAs</h3>
-                      <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{selectedRole.opening_data.key_kras}</p>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     {selectedRole.opening_data.salary_band && (
-                      <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
-                        <div className="flex items-center gap-2 mb-2">
-                          <DollarSign className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
-                          <p className="text-xs text-slate-500">Salary Band</p>
-                        </div>
+                      <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800">
+                        <div className="flex items-center gap-1.5 mb-1"><DollarSign className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} /><p className="text-[10px] text-slate-500">Salary Band</p></div>
                         <p className="text-sm font-semibold text-white">{selectedRole.opening_data.salary_band}</p>
                       </div>
                     )}
                     {selectedRole.opening_data.min_exp && (
-                      <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-800">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="w-4 h-4 text-cyan-400" strokeWidth={1.5} />
-                          <p className="text-xs text-slate-500">Min. Experience</p>
-                        </div>
+                      <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800">
+                        <div className="flex items-center gap-1.5 mb-1"><Clock className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} /><p className="text-[10px] text-slate-500">Min. Experience</p></div>
                         <p className="text-sm font-semibold text-white">{selectedRole.opening_data.min_exp}</p>
                       </div>
                     )}
                   </div>
                 </>
               )}
-            </div>
-
-            <div className="p-6 border-t border-slate-800">
-              <button onClick={() => setSelectedRole(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl transition-all font-semibold">
-                Close
-              </button>
             </div>
           </div>
         </div>
@@ -317,41 +259,20 @@ const JobOpenings = () => {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 card-glow">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white">Upload Hiring Data</h2>
-              <button onClick={() => setShowUpload(false)} className="text-slate-400 hover:text-white transition-colors" data-testid="upload-modal-close">
-                <X className="w-5 h-5" strokeWidth={1.5} />
-              </button>
+              <h2 className="text-xl font-bold text-white">Upload Hiring Data</h2>
+              <button onClick={() => { setShowUpload(false); setUploadMessage(''); }} className="text-slate-400 hover:text-white"><X className="w-5 h-5" strokeWidth={1.5} /></button>
             </div>
-            <p className="text-sm text-slate-400 mb-6">Upload an Excel file with both "Vendor Hiring" and "Open Positions" sheets.</p>
+            <p className="text-sm text-slate-400 mb-5">Upload Excel with "Vendor Hiring" and "Open Positions" sheets.</p>
             {!uploading && !uploadMessage && (
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
-                  isDragActive ? 'border-cyan-500 bg-cyan-500/5' : 'border-slate-700 hover:border-cyan-500/50 hover:bg-slate-800/50 cursor-pointer'
-                }`}
-              >
+              <div {...getRootProps()} className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${isDragActive ? 'border-cyan-500 bg-cyan-500/5' : 'border-slate-700 hover:border-cyan-500/50 cursor-pointer'}`}>
                 <input {...getInputProps()} />
-                <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" strokeWidth={1.5} />
-                {isDragActive ? (
-                  <p className="text-sm text-cyan-400">Drop the file here...</p>
-                ) : (
-                  <div>
-                    <p className="text-sm text-slate-300 mb-1">Drag and drop an Excel file here, or click to browse</p>
-                    <p className="text-xs text-slate-500">Supports .xlsx and .xls files</p>
-                  </div>
-                )}
+                <Upload className="w-10 h-10 text-slate-400 mx-auto mb-3" strokeWidth={1.5} />
+                <p className="text-sm text-slate-300 mb-1">Drag and drop or click to browse</p>
+                <p className="text-xs text-slate-500">.xlsx / .xls</p>
               </div>
             )}
-            {uploading && (
-              <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-center">
-                <p className="text-sm text-cyan-400">Uploading and processing...</p>
-              </div>
-            )}
-            {uploadMessage && (
-              <div className={`p-4 rounded-xl border ${uploadMessage.includes('Success') ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-                <p className={`text-sm ${uploadMessage.includes('Success') ? 'text-emerald-400' : 'text-red-400'}`}>{uploadMessage}</p>
-              </div>
-            )}
+            {uploading && <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl text-center"><p className="text-sm text-cyan-400">Processing...</p></div>}
+            {uploadMessage && <div className={`p-4 rounded-xl border ${uploadMessage.includes('Uploaded') ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}><p className="text-sm">{uploadMessage}</p></div>}
           </div>
         </div>
       )}
