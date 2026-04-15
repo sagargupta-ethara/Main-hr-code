@@ -31,7 +31,6 @@ const DashboardLayout = () => {
     { path: '/dashboard/candidates', label: 'Candidates', testId: 'nav-candidates' },
     { path: '/dashboard/interviews', label: 'Interviews', testId: 'nav-interviews' },
     { path: '/dashboard/contacts', label: 'Contacts', testId: 'nav-contacts' },
-    { path: '/dashboard/analysis', label: 'Analysis', testId: 'nav-analysis' },
   ];
 
   return (

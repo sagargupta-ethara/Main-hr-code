@@ -9,7 +9,6 @@ import JobOpenings from './pages/JobOpenings';
 import Candidates from './pages/Candidates';
 import Interviews from './pages/Interviews';
 import Contacts from './pages/Contacts';
-import Analysis from './pages/Analysis';
 import { Toaster } from './components/ui/sonner';
 import './App.css';
 
@@ -32,7 +31,6 @@ function App() {
             <Route path="candidates" element={<Candidates />} />
             <Route path="interviews" element={<Interviews />} />
             <Route path="contacts" element={<Contacts />} />
-            <Route path="analysis" element={<Analysis />} />
           </Route>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
