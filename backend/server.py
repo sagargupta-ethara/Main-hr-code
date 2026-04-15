@@ -199,6 +199,7 @@ async def sync_candidates_from_google():
                 "vendor": safe_get("vendor"),
             }
             
+            candidate["hr_spoc"] = normalize_hr_spoc(candidate.get("hr_spoc"))
             candidate["current_stage"] = determine_current_stage(candidate)
             candidates.append(candidate)
         
@@ -398,15 +399,21 @@ def normalize_status(status: str) -> str:
         return "Offer Released"
     return "New"
 
+def normalize_hr_spoc(name):
+    """Normalize HR SPOC names to their full form"""
+    if not name:
+        return name
+    spoc_map = {"pujita": "Pujita Bhuyan", "muskan": "Muskan"}
+    return spoc_map.get(name.strip().lower(), name.strip())
+
 def determine_current_stage(row: dict) -> str:
-    """Determine current pipeline stage for a candidate"""
+    """Determine current pipeline stage for a candidate based on sheet fields"""
     final_status = str(row.get("final_status", "")).lower().strip() if row.get("final_status") else ""
-    
-    # Check for rejected first (explicit rejection takes priority)
+    resume_status = str(row.get("resume_status", "")).lower().strip() if row.get("resume_status") else ""
+
+    # Final Status takes highest priority
     if final_status and "reject" in final_status:
         return "Rejected"
-    
-    # Check for selected/cleared statuses - comprehensive matching
     selected_keywords = ["selected", "select", "cleared interview", "cleared", "clear"]
     if final_status and any(kw in final_status for kw in selected_keywords):
         if row.get("joining_date"):
@@ -414,26 +421,27 @@ def determine_current_stage(row: dict) -> str:
         elif row.get("offer_released"):
             return "Offer Released"
         return "Selected"
-    
-    # Check interview stages
+
+    # Interview stages (has been interviewed)
     interview_status_l2 = str(row.get("interview_status_l2", "")).strip() if row.get("interview_status_l2") else ""
     interview_status_l1 = str(row.get("interview_status_l1", "")).strip() if row.get("interview_status_l1") else ""
-    
     if interview_status_l2:
         return "L2 Interview"
-    elif interview_status_l1:
+    if interview_status_l1:
         return "L1 Interview"
-    elif row.get("interview_slot_l1") or row.get("interview_slot_l2") or row.get("assessment_round"):
+
+    # Has interview slot → scheduled
+    slot_l1 = str(row.get("interview_slot_l1", "")).strip() if row.get("interview_slot_l1") else ""
+    slot_l2 = str(row.get("interview_slot_l2", "")).strip() if row.get("interview_slot_l2") else ""
+    if slot_l1 or slot_l2:
         return "Interview Scheduled"
-    
-    # Check resume screening status
-    resume_status = str(row.get("resume_status", "")).lower().strip() if row.get("resume_status") else ""
-    if resume_status:
-        if "shortlist" in resume_status:
-            return "Shortlisted"
-        elif "reject" in resume_status:
-            return "Rejected"
-    
+
+    # Resume screening status
+    if resume_status and "reject" in resume_status:
+        return "Rejected"
+    if resume_status and "shortlist" in resume_status:
+        return "Shortlisted"
+
     return "New"
 
 async def parse_and_store_openings(file_content: bytes):
@@ -588,6 +596,7 @@ async def parse_and_store_excel(file_content: bytes):
             }
             
             candidate["current_stage"] = determine_current_stage(candidate)
+            candidate["hr_spoc"] = normalize_hr_spoc(candidate.get("hr_spoc"))
             candidates.append(candidate)
         
         if candidates:
@@ -728,11 +737,22 @@ async def get_candidate(candidate_id: str, user: dict = Depends(get_current_user
 
 # ============ ANALYTICS ENDPOINTS ============
 
+# Reusable query fragments for sheet-driven counting
+REJECTED_AT_RESUME = {"resume_status": {"$regex": "reject", "$options": "i"}}
+REJECTED_AT_FINAL = {"final_status": {"$regex": "reject", "$options": "i"}}
+REJECTED_ANYWHERE = {"$or": [REJECTED_AT_RESUME, REJECTED_AT_FINAL]}
+NOT_REJECTED = {"$nor": [REJECTED_AT_RESUME, REJECTED_AT_FINAL]}
+SHORTLISTED_QUERY = {"resume_status": {"$regex": "shortlist", "$options": "i"}}
+HAS_INTERVIEW_SLOT = {"$or": [
+    {"interview_slot_l1": {"$ne": None, "$nin": ["", "None"]}},
+    {"interview_slot_l2": {"$ne": None, "$nin": ["", "None"]}},
+]}
+SELECTED_QUERY = {"final_status": {"$regex": "select", "$options": "i"}}
+
 @api_router.get("/analytics/kpis")
 async def get_kpis(user: dict = Depends(get_current_user)):
     total_candidates = await db.candidates.count_documents({})
     
-    # Use openings collection if available, else count unique roles
     openings_count = await db.openings.count_documents({})
     if openings_count > 0:
         total_openings = openings_count
@@ -741,19 +761,16 @@ async def get_kpis(user: dict = Depends(get_current_user)):
         openings_result = await db.candidates.aggregate(pipeline).to_list(1)
         total_openings = openings_result[0]["total"] if openings_result else 0
     
-    active_candidates = await db.candidates.count_documents({
-        "current_stage": {"$nin": ["Rejected", "Joined"]}
-    })
-    
-    # Count shortlisted based on Resume Screening Status column
-    shortlisted = await db.candidates.count_documents({
-        "resume_status": {"$regex": "shortlist", "$options": "i"}
-    })
-    interviews_scheduled = await db.candidates.count_documents({
-        "current_stage": {"$in": ["Interview Scheduled", "L1 Interview", "L2 Interview"]}
-    })
-    rejected = await db.candidates.count_documents({"current_stage": "Rejected"})
-    selected = await db.candidates.count_documents({"current_stage": "Selected"})
+    # Active = not rejected at any stage
+    active_candidates = await db.candidates.count_documents(NOT_REJECTED)
+    # Shortlisted = Resume Screening Status contains "shortlisted"
+    shortlisted = await db.candidates.count_documents(SHORTLISTED_QUERY)
+    # Rejected = rejected at resume screening OR final status
+    rejected = await db.candidates.count_documents(REJECTED_ANYWHERE)
+    # Interview Scheduled = has interview slot
+    interviews_scheduled = await db.candidates.count_documents(HAS_INTERVIEW_SLOT)
+    # Selected = Final Status contains "selected"
+    selected = await db.candidates.count_documents(SELECTED_QUERY)
     offer_released = await db.candidates.count_documents({"current_stage": "Offer Released"})
     joined = await db.candidates.count_documents({"current_stage": "Joined"})
     
@@ -1269,55 +1286,52 @@ async def get_kpis_filtered(
     to_date: Optional[str] = None,
     vendor: Optional[str] = None
 ):
-    """Get KPIs with optional date and vendor filtering"""
-    query = {}
+    """Get KPIs with optional date and vendor filtering - sheet-driven counts"""
+    base = {}
     if from_date or to_date:
         date_filter = {}
         if from_date:
             date_filter["$gte"] = from_date
         if to_date:
             date_filter["$lte"] = to_date
-        query["submission_date"] = date_filter
+        base["submission_date"] = date_filter
     if vendor:
-        query["vendor"] = {"$regex": f"^{vendor}$", "$options": "i"}
-    
-    total_candidates = await db.candidates.count_documents(query)
-    
-    def with_query(extra):
-        return {**query, **extra}
-    
+        base["vendor"] = {"$regex": f"^{vendor}$", "$options": "i"}
+
+    def q(extra=None):
+        if extra:
+            return {"$and": [base, extra]} if base else extra
+        return base
+
+    total_candidates = await db.candidates.count_documents(q())
+
+    # Active = not rejected at resume OR final level
     active_candidates = await db.candidates.count_documents(
-        with_query({"current_stage": {"$nin": ["Rejected", "Joined"]}})
+        {"$and": [base, NOT_REJECTED]} if base else NOT_REJECTED
     )
-    shortlisted = await db.candidates.count_documents(
-        with_query({"resume_status": {"$regex": "shortlist", "$options": "i"}})
-    )
-    interviews_scheduled = await db.candidates.count_documents(
-        with_query({"current_stage": {"$in": ["Interview Scheduled", "L1 Interview", "L2 Interview"]}})
-    )
-    rejected = await db.candidates.count_documents(with_query({"current_stage": "Rejected"}))
-    selected = await db.candidates.count_documents(with_query({"current_stage": "Selected"}))
-    offer_released = await db.candidates.count_documents(with_query({"current_stage": "Offer Released"}))
-    joined = await db.candidates.count_documents(with_query({"current_stage": "Joined"}))
-    
+    # Shortlisted = resume_status contains "shortlist"
+    shortlisted = await db.candidates.count_documents(q(SHORTLISTED_QUERY))
+    # Rejected = rejected at any level
+    rejected = await db.candidates.count_documents(q(REJECTED_ANYWHERE))
+    # Interview Scheduled = has interview slot
+    interviews_scheduled = await db.candidates.count_documents(q(HAS_INTERVIEW_SLOT))
+    # Selected = final_status contains "selected"
+    selected = await db.candidates.count_documents(q(SELECTED_QUERY))
+    offer_released = await db.candidates.count_documents(q({"current_stage": "Offer Released"}))
+    joined = await db.candidates.count_documents(q({"current_stage": "Joined"}))
+
     openings_count = await db.openings.count_documents({})
-    if openings_count == 0:
-        pipeline = [{"$match": query}, {"$group": {"_id": "$role"}}, {"$count": "total"}]
+    if vendor or openings_count == 0:
+        pipeline = [{"$match": q()}, {"$group": {"_id": "$role"}}, {"$count": "total"}]
         openings_result = await db.candidates.aggregate(pipeline).to_list(1)
         total_openings = openings_result[0]["total"] if openings_result else 0
     else:
-        # When vendor filter is active, count roles that have candidates from this vendor
-        if vendor:
-            pipeline = [{"$match": query}, {"$group": {"_id": "$role"}}, {"$count": "total"}]
-            openings_result = await db.candidates.aggregate(pipeline).to_list(1)
-            total_openings = openings_result[0]["total"] if openings_result else 0
-        else:
-            total_openings = openings_count
-    
-    vendors_pipeline = [{"$match": query}, {"$group": {"_id": "$vendor"}}, {"$count": "total"}]
+        total_openings = openings_count
+
+    vendors_pipeline = [{"$match": q()}, {"$group": {"_id": "$vendor"}}, {"$count": "total"}]
     vendors_result = await db.candidates.aggregate(vendors_pipeline).to_list(1)
     total_vendors = vendors_result[0]["total"] if vendors_result else 0
-    
+
     return {
         "total_openings": total_openings,
         "total_candidates": total_candidates,

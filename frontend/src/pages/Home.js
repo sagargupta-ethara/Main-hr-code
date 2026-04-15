@@ -107,37 +107,50 @@ const Home = () => {
   const openKPIModal = async (type) => {
     try {
       let data = null; let title = '';
+      const vp = selectedVendor ? `vendor=${encodeURIComponent(selectedVendor)}&` : '';
       switch(type) {
         case 'openings': {
           const rolesRes = await axios.get(`${API_URL}/api/analytics/roles`, { withCredentials: true });
           data = rolesRes.data;
-          title = 'All Job Openings';
+          title = selectedVendor ? `Job Openings (${selectedVendor})` : 'All Job Openings';
           break;
         }
         case 'candidates': {
-          const r = await axios.get(`${API_URL}/api/candidates`, { withCredentials: true });
-          data = r.data; title = 'All Candidates'; break;
+          const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true });
+          data = r.data; title = selectedVendor ? `All Candidates (${selectedVendor})` : 'All Candidates'; break;
         }
         case 'interviews': {
           const r = await axios.get(`${API_URL}/api/analytics/interviews`, { withCredentials: true });
-          data = r.data; title = 'Interviews'; break;
+          data = selectedVendor ? r.data.filter(i => i.vendor?.toLowerCase() === selectedVendor.toLowerCase()) : r.data;
+          title = selectedVendor ? `Interviews (${selectedVendor})` : 'Interviews'; break;
         }
         case 'selected': {
-          const r = await axios.get(`${API_URL}/api/candidates?stage=Selected`, { withCredentials: true });
+          const r = await axios.get(`${API_URL}/api/candidates?${vp}stage=Selected`, { withCredentials: true });
           data = r.data; title = 'Selected Candidates'; break;
         }
         case 'active': {
-          const r = await axios.get(`${API_URL}/api/candidates`, { withCredentials: true });
-          data = r.data.filter(c => !['Rejected', 'Joined'].includes(c.current_stage));
-          title = 'Active Candidates'; break;
+          const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true });
+          // Active = not rejected at resume_status or final_status
+          data = r.data.filter(c => {
+            const rs = (c.resume_status || '').toLowerCase();
+            const fs = (c.final_status || '').toLowerCase();
+            return !rs.includes('reject') && !fs.includes('reject');
+          });
+          title = selectedVendor ? `Active Candidates (${selectedVendor})` : 'Active Candidates'; break;
         }
         case 'shortlisted': {
-          const r = await axios.get(`${API_URL}/api/candidates?stage=Shortlisted`, { withCredentials: true });
-          data = r.data; title = 'Shortlisted Candidates'; break;
+          const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true });
+          data = r.data.filter(c => (c.resume_status || '').toLowerCase().includes('shortlist'));
+          title = selectedVendor ? `Shortlisted (${selectedVendor})` : 'Shortlisted Candidates'; break;
         }
         case 'rejected': {
-          const r = await axios.get(`${API_URL}/api/candidates?stage=Rejected`, { withCredentials: true });
-          data = r.data; title = 'Rejected Candidates'; break;
+          const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true });
+          data = r.data.filter(c => {
+            const rs = (c.resume_status || '').toLowerCase();
+            const fs = (c.final_status || '').toLowerCase();
+            return rs.includes('reject') || fs.includes('reject');
+          });
+          title = selectedVendor ? `Rejected (${selectedVendor})` : 'Rejected Candidates'; break;
         }
         default: break;
       }
@@ -343,7 +356,7 @@ const Home = () => {
                 </div>
               )}
               {/* Candidate-type modals */}
-              {['candidates','active','selected','shortlisted','rejected'].includes(modalData.type) && (
+              {['candidates','selected','shortlisted','rejected'].includes(modalData.type) && (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead><tr className="border-b border-slate-800">
@@ -351,7 +364,7 @@ const Home = () => {
                       <th className="text-left py-2.5 px-3 text-xs text-slate-500 font-bold">Role</th>
                       <th className="text-left py-2.5 px-3 text-xs text-slate-500 font-bold">Vendor</th>
                       <th className="text-left py-2.5 px-3 text-xs text-slate-500 font-bold">Stage</th>
-                      <th className="text-left py-2.5 px-3 text-xs text-slate-500 font-bold">Experience</th>
+                      <th className="text-left py-2.5 px-3 text-xs text-slate-500 font-bold">{modalData.type === 'rejected' ? 'Rejection Reason' : 'Experience'}</th>
                     </tr></thead>
                     <tbody>
                       {modalData.data?.map((c, idx) => (
@@ -360,13 +373,50 @@ const Home = () => {
                           <td className="py-2.5 px-3 text-sm text-slate-400">{c.role}</td>
                           <td className="py-2.5 px-3 text-sm text-slate-400">{c.vendor}</td>
                           <td className="py-2.5 px-3"><StatusBadge status={c.current_stage} /></td>
-                          <td className="py-2.5 px-3 text-sm text-slate-400">{c.work_experience}</td>
+                          <td className="py-2.5 px-3 text-sm text-slate-400">{modalData.type === 'rejected' ? (c.resume_status || c.final_status || '-') : (c.work_experience || '-')}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
+              {/* Active Candidates - grouped by Profile Submission Date */}
+              {modalData.type === 'active' && (() => {
+                const grouped = {};
+                (modalData.data || []).forEach(c => {
+                  const d = c.submission_date || 'No Date';
+                  if (!grouped[d]) grouped[d] = [];
+                  grouped[d].push(c);
+                });
+                const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+                return (
+                  <div className="space-y-4">
+                    {dates.map(date => (
+                      <div key={date}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">{date}</span>
+                          <span className="text-[10px] text-slate-500">{grouped[date].length} candidate{grouped[date].length !== 1 ? 's' : ''}</span>
+                          <div className="flex-1 border-t border-slate-800/40" />
+                        </div>
+                        <table className="w-full mb-2">
+                          <tbody>
+                            {grouped[date].map((c, idx) => (
+                              <tr key={idx} className="border-b border-slate-800/30 hover:bg-slate-800/30">
+                                <td className="py-2 px-3 text-sm text-white font-medium w-1/4">{c.candidate_name}</td>
+                                <td className="py-2 px-3 text-sm text-slate-400 w-1/4">{c.role}</td>
+                                <td className="py-2 px-3 text-sm text-slate-400 w-1/6">{c.vendor}</td>
+                                <td className="py-2 px-3 w-1/6"><StatusBadge status={c.current_stage} /></td>
+                                <td className="py-2 px-3 text-sm text-slate-400 w-1/6">{c.work_experience || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                    {dates.length === 0 && <p className="text-center text-slate-500 py-8">No active candidates</p>}
+                  </div>
+                );
+              })()}
               {/* Interviews modal */}
               {modalData.type === 'interviews' && (
                 <div className="space-y-3">
@@ -381,6 +431,7 @@ const Home = () => {
                         <div><span className="text-slate-400">Level:</span> <span className="text-cyan-400">{i.level}</span></div>
                         <div><span className="text-slate-400">Interviewer:</span> <span className="text-white">{i.interviewer || 'TBD'}</span></div>
                         {i.slot && <div><span className="text-slate-400">Slot:</span> <span className="text-white">{i.slot}</span></div>}
+                        {i.status && <div><span className="text-slate-400">Interview Status ({i.level}):</span> <span className="text-white">{i.status}</span></div>}
                       </div>
                     </div>
                   ))}
