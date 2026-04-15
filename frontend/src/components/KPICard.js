@@ -1,36 +1,41 @@
 import React from 'react';
 
-const KPICard = ({ title, value, subtitle, trend, icon: Icon, onClick, testId }) => {
+const KPICard = ({ title, value, subtitle, description, trend, icon: Icon, onClick, testId, color }) => {
+  const colorMap = {
+    blue:    { bg: 'bg-blue-50', border: 'border-blue-100', value: 'text-blue-600', icon: 'bg-blue-100 text-blue-600' },
+    green:   { bg: 'bg-emerald-50', border: 'border-emerald-100', value: 'text-emerald-600', icon: 'bg-emerald-100 text-emerald-600' },
+    red:     { bg: 'bg-red-50', border: 'border-red-100', value: 'text-red-500', icon: 'bg-red-100 text-red-500' },
+    purple:  { bg: 'bg-violet-50', border: 'border-violet-100', value: 'text-violet-600', icon: 'bg-violet-100 text-violet-600' },
+    amber:   { bg: 'bg-amber-50', border: 'border-amber-100', value: 'text-amber-600', icon: 'bg-amber-100 text-amber-600' },
+    default: { bg: 'bg-white', border: 'border-slate-200', value: 'text-slate-800', icon: 'bg-slate-100 text-slate-600' },
+  };
+  const c = colorMap[color] || colorMap.default;
+
   return (
     <div
       data-testid={testId}
       onClick={onClick}
-      className={`bg-slate-900 border border-slate-800 rounded-2xl p-6 card-glow ${
-        onClick ? 'cursor-pointer card-glow-hover transition-all duration-300' : ''
-      }`}
+      className={`${c.bg} border ${c.border} rounded-2xl p-5 ${onClick ? 'cursor-pointer hover:shadow-md transition-all duration-200' : ''}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold mb-2">
-            {title}
-          </p>
-          <p className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent font-mono mb-1">
-            {value}
-          </p>
-          {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-1.5">{title}</p>
+          <p className={`text-3xl font-bold ${c.value} font-mono mb-0.5`}>{value}</p>
+          {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+          {description && <p className="text-[11px] text-slate-400 mt-1">{description}</p>}
         </div>
         {Icon && (
-          <div className="ml-4 p-3 bg-gradient-to-br from-cyan-500/10 to-teal-500/10 rounded-xl border border-cyan-500/20">
-            <Icon className="w-6 h-6 text-cyan-400" strokeWidth={1.5} />
+          <div className={`ml-3 p-2.5 rounded-xl ${c.icon}`}>
+            <Icon className="w-5 h-5" strokeWidth={1.5} />
           </div>
         )}
       </div>
       {trend && (
-        <div className="mt-3 pt-3 border-t border-slate-800">
-          <span className={`text-xs font-semibold ${trend > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
+        <div className="mt-3 pt-3 border-t border-slate-200/60">
+          <span className={`text-xs font-semibold ${trend > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            {trend > 0 ? '+' : ''}{trend}%
           </span>
-          <span className="text-xs text-slate-500 ml-1">vs last period</span>
+          <span className="text-xs text-slate-400 ml-1">vs last period</span>
         </div>
       )}
     </div>
