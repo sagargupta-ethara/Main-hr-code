@@ -1,43 +1,32 @@
 # HR Dashboard - Product Requirements Document
 
-## Original Problem Statement
-Build a complete vendor hiring dashboard (HR Dashboard) with dark premium theme, same-page modal popups, and accurate sheet-driven data counting.
-
-## Architecture
-- **Frontend**: React 18 + Tailwind CSS + Shadcn/UI + Recharts
-- **Backend**: FastAPI + Motor (async MongoDB) + Pandas + PyMuPDF + python-docx
-- **Database**: MongoDB
-- **Auth**: JWT (httpOnly cookies)
-
-## Data Counting Logic (Sheet-Driven)
-- **Active Candidates**: NOT (resume_status~reject OR final_status~reject)
-- **Shortlisted**: resume_status contains "shortlisted" 
+## Data Counting Logic (Sheet-Driven, Exact)
+- **Active**: NOT (resume_status~reject OR final_status~reject)
+- **Shortlisted**: resume_status~shortlist AND NOT final_status~reject
 - **Rejected**: resume_status~reject OR final_status~reject (any phase)
-- **Interview Scheduled**: interview_slot_l1 or l2 is present (non-null, non-empty)
-- **Selected**: final_status contains "selected"
-- **HR SPOC**: Normalized ("Pujita" → "Pujita Bhuyan")
+- **Interview Scheduled**: interview_slot present AND date is today/future
+- **Selected**: final_status~selected
+- **Pipeline "Submitted"**: replaces "New" when submission_date is in the past
 
 ## Implemented Features
-- [x] Sheet-driven KPI counts using direct field queries (not current_stage)
-- [x] Vendor filter on Home — updates ALL KPIs, charts, candidates, and modal popups
-- [x] Active Candidates popup grouped by Profile Submission Date
-- [x] Shortlisted popup = resume_status contains shortlist only
-- [x] Rejected popup = rejected at any phase
-- [x] Interview popup shows L1/L2 status labels
-- [x] HR SPOC normalized to full names
-- [x] Division-grouped Job Openings with JD Upload + Nominees
+- [x] Sheet-driven KPI counts with exact field queries
+- [x] Vendor filter propagates to ALL modals
+- [x] Active popup grouped by submission date
+- [x] JD Upload with clickable preview link (PDF/DOCX/TXT)
+- [x] Interview feedback: L1 Feedback or Remark
+- [x] Stage Drop-off with candidate list drilldown
+- [x] Division-grouped Job Openings with nominees
 - [x] Analysis vendor drilldown with member list
-- [x] Clickable analysis metrics with popup insights
-- [x] Date filters + vendor filter combinable
+- [x] HR SPOC normalization
 - [x] Google Sheets 1-click sync
-- [x] Background scroll lock, sticky headers, profile dropdown
+- [x] Date + vendor combinable filters
+- [x] Scroll lock, sticky headers, profile dropdown
 
 ## Key API Endpoints
-- GET /api/analytics/kpis, /api/analytics/kpis-filtered (?from_date, ?to_date, ?vendor)
-- GET /api/analytics/pipeline (?vendor), /api/analytics/vendors, /api/analytics/vendor-list
-- GET /api/analytics/vendor-detail, /api/analytics/roles, /api/analytics/interviews
-- GET /api/candidates, /api/contacts, /api/openings, /api/openings/nominees
-- POST /api/openings/jd, /api/sync-all, /api/upload-excel
-
-## DB Collections
-- users, candidates, openings, settings, job_descriptions
+- GET /api/analytics/kpis, /kpis-filtered (?from_date, ?to_date, ?vendor)
+- GET /api/analytics/pipeline (?vendor), /vendors, /vendor-list, /vendor-detail
+- GET /api/analytics/dropoff-detail (?stage_from, ?stage_to)
+- GET /api/analytics/roles, /interviews
+- GET /api/candidates, /contacts, /openings, /openings/nominees
+- POST /api/openings/jd, GET /api/openings/jd, GET /api/openings/jd/download
+- POST /api/sync-all, /upload-excel, GET /api/export/candidates
