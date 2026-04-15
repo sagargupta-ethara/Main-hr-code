@@ -226,19 +226,19 @@ const Home = () => {
         )}
       </div>
 
-      {/* KPI Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <KPICard testId="kpi-active-candidates" title="Active Candidates" value={kpis?.active_candidates || 0} subtitle="Not rejected at any stage" description="Excludes resume & final rejections" color="blue" onClick={() => openKPIModal('active')} />
-        <KPICard testId="kpi-shortlisted" title="Shortlisted" value={kpis?.shortlisted || 0} subtitle="Resume screening passed" description="Approved by hiring manager" color="purple" onClick={() => openKPIModal('shortlisted')} />
-        <KPICard testId="kpi-rejected" title="Rejected" value={kpis?.rejected || 0} subtitle="At any hiring stage" description="Resume or final stage rejection" color="red" onClick={() => openKPIModal('rejected')} />
+      {/* KPI Row 1: Total Candidates first, then pipeline start */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard testId="kpi-total-candidates" title="Total Candidates" value={kpis?.total_candidates || 0} icon={Users} subtitle="All submitted profiles" accent="cyan" onClick={() => openKPIModal('candidates')} />
+        <KPICard testId="kpi-total-openings" title="Total Openings" value={kpis?.total_openings || 0} icon={Briefcase} subtitle="Active job positions" accent="cyan" onClick={() => openKPIModal('openings')} />
+        <KPICard testId="kpi-active-candidates" title="Active Candidates" value={kpis?.active_candidates || 0} subtitle="Not rejected at any stage" description="Excludes resume & final rejections" accent="cyan" onClick={() => openKPIModal('active')} />
+        <KPICard testId="kpi-shortlisted" title="Shortlisted" value={kpis?.shortlisted || 0} subtitle="Resume screening passed" description="Approved by hiring manager" accent="violet" onClick={() => openKPIModal('shortlisted')} />
       </div>
 
-      {/* KPI Row 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard testId="kpi-total-openings" title="Total Openings" value={kpis?.total_openings || 0} icon={Briefcase} subtitle="Active job positions" color="blue" onClick={() => openKPIModal('openings')} />
-        <KPICard testId="kpi-total-candidates" title="Total Candidates" value={kpis?.total_candidates || 0} icon={Users} subtitle="All submitted profiles" onClick={() => openKPIModal('candidates')} />
-        <KPICard testId="kpi-interviews-scheduled" title="Interviews" value={kpis?.interviews_scheduled || 0} icon={Calendar} subtitle="Today or upcoming" color="amber" onClick={() => openKPIModal('interviews')} />
-        <KPICard testId="kpi-selected" title="Selected" value={kpis?.selected || 0} icon={CheckCircle} subtitle="Final status cleared" color="green" onClick={() => openKPIModal('selected')} />
+      {/* KPI Row 2: Pipeline continuation */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <KPICard testId="kpi-interviews-scheduled" title="Interviews Scheduled" value={kpis?.interviews_scheduled || 0} icon={Calendar} subtitle="Today or upcoming slots" accent="amber" onClick={() => openKPIModal('interviews')} />
+        <KPICard testId="kpi-selected" title="Selected" value={kpis?.selected || 0} icon={CheckCircle} subtitle="Final status cleared" accent="green" onClick={() => openKPIModal('selected')} />
+        <KPICard testId="kpi-rejected" title="Rejected" value={kpis?.rejected || 0} subtitle="At any hiring stage" description="Resume or final stage rejection" accent="red" onClick={() => openKPIModal('rejected')} />
       </div>
 
       {/* Conversion Metrics */}
@@ -384,6 +384,7 @@ const Home = () => {
                   <th className="text-left py-2.5 px-3 text-xs text-[var(--text-muted)] font-semibold">Vendor</th>
                   <th className="text-left py-2.5 px-3 text-xs text-[var(--text-muted)] font-semibold">Stage</th>
                   <th className="text-left py-2.5 px-3 text-xs text-[var(--text-muted)] font-semibold">{modalData.type === 'rejected' ? 'Reason' : 'Exp'}</th>
+                  <th className="text-left py-2.5 px-3 text-xs text-[var(--text-muted)] font-semibold">Resume</th>
                 </tr></thead><tbody>
                   {modalData.data?.map((c, idx) => (
                     <tr key={idx} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-raised)]">
@@ -392,6 +393,7 @@ const Home = () => {
                       <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">{c.vendor}</td>
                       <td className="py-2.5 px-3"><StatusBadge status={c.current_stage} /></td>
                       <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">{modalData.type === 'rejected' ? (c.resume_status || c.final_status || '-') : (c.work_experience || '-')}</td>
+                      <td className="py-2.5 px-3">{c.resume_link ? <a href={c.resume_link} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 underline">View</a> : <span className="text-xs text-[var(--text-muted)]">-</span>}</td>
                     </tr>
                   ))}
                 </tbody></table>
@@ -405,7 +407,7 @@ const Home = () => {
                     <span className="text-[10px] text-[var(--text-muted)]">{grouped[date].length}</span><div className="flex-1 border-t border-[var(--border-default)]" />
                   </div>
                   <table className="w-full mb-2"><tbody>{grouped[date].map((c, idx) => (
-                    <tr key={idx} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-raised)]"><td className="py-2 px-3 text-sm text-[var(--text-primary)] font-medium w-1/4">{c.candidate_name}</td><td className="py-2 px-3 text-sm text-[var(--text-secondary)] w-1/4">{c.role}</td><td className="py-2 px-3 text-sm text-[var(--text-secondary)] w-1/6">{c.vendor}</td><td className="py-2 px-3 w-1/6"><StatusBadge status={c.current_stage} /></td><td className="py-2 px-3 text-sm text-[var(--text-secondary)] w-1/6">{c.work_experience || '-'}</td></tr>
+                    <tr key={idx} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-raised)]"><td className="py-2 px-3 text-sm text-[var(--text-primary)] font-medium">{c.candidate_name}</td><td className="py-2 px-3 text-sm text-[var(--text-secondary)]">{c.role}</td><td className="py-2 px-3 text-sm text-[var(--text-secondary)]">{c.vendor}</td><td className="py-2 px-3"><StatusBadge status={c.current_stage} /></td><td className="py-2 px-3">{c.resume_link ? <a href={c.resume_link} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 underline">Resume</a> : <span className="text-xs text-[var(--text-muted)]">-</span>}</td></tr>
                   ))}</tbody></table></div>))}</div>);
               })()}
               {modalData.type === 'interviews' && (
