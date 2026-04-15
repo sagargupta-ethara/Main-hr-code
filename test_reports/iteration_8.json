@@ -1,0 +1,71 @@
+{
+  "summary": "Iteration 8 Complete - All 6 specific fixes verified. Backend: 12/12 tests passed. Frontend: All features working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: /api/analytics/kpis returns shortlisted=3 (excludes final_status=Rejected)",
+    "Backend: /api/analytics/kpis returns interviews_scheduled=0 (no future interview slots)",
+    "Backend: /api/analytics/pipeline returns 'Submitted' stage (not 'New') with count=15",
+    "Backend: /api/openings/jd/download endpoint exists and returns 404 when no JD uploaded",
+    "Backend: /api/analytics/interviews includes feedback and remarks fields",
+    "Backend: /api/analytics/dropoff-detail returns candidate list with from_count, to_count, dropped_count",
+    "Backend: Other KPIs correct - Active=19, Rejected=41, Selected=1, Total=60",
+    "Backend: Pipeline Rejected=41, Shortlisted=3, Selected=1",
+    "Frontend: Dashboard Shortlisted KPI shows 3 (not 20)",
+    "Frontend: Dashboard Active=19, Rejected=41, Interviews=0, Selected=1",
+    "Frontend: Shortlisted popup shows exactly 3 candidates (Roshani, Vikrant Kumar, Dipu Sharma)",
+    "Frontend: Pipeline by Stage chart shows 'Submitted' instead of 'New'",
+    "Frontend: Job Openings modal has JD section with Upload JD button (data-testid=jd-upload-btn)",
+    "Frontend: JD preview link (data-testid=jd-preview-link) appears after JD upload",
+    "Frontend: Analysis drop-off card click opens modal with candidate list table",
+    "Frontend: Drop-off modal shows 'Entered Stage' (60) and 'Moved Forward' (20) counts",
+    "Frontend: Interviews detail modal shows feedback section",
+    "Frontend: Vendor filter works correctly - Bravia Services shows Shortlisted=2",
+    "Frontend: Vendor filter propagates to modal titles (e.g., 'Shortlisted (Bravia Services)')"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_fixes.py",
+    "/app/test_reports/pytest/pytest_results_iteration8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_fixes.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 tests passed)",
+    "frontend": "100% (all features verified via Playwright)"
+  },
+  "test_credentials": {
+    "email": "admin@vendorhiring.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "No new seed data - used existing data from Google Sheets sync",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 6 fixes from iteration 8 are working correctly: 1) Shortlisted=3 (resume_status~shortlist AND NOT final_status~reject), 2) Interviews Scheduled=0 (only future/today slots counted), 3) Pipeline shows 'Submitted' (15) instead of 'New', 4) JD download endpoint at /api/openings/jd/download works (returns file or 404), 5) Interviews include feedback/remarks fields, 6) Drop-off detail endpoint returns candidate list with counts. Key data-testids: kpi-shortlisted, kpi-active-candidates, kpi-rejected, kpi-interviews-scheduled, kpi-selected, jd-upload-btn, jd-preview-link, drop-off-analysis, vendor-filter.",
+  "notes": {
+    "fix_1_shortlisted": "SHORTLISTED_QUERY in server.py line 779 now uses $nor to exclude final_status~reject. Count changed from 20 to 3.",
+    "fix_2_interviews": "count_future_interviews() helper at line 789 only counts slots with future/today dates. Currently 0.",
+    "fix_3_pipeline": "determine_current_stage() at line 435 returns 'Submitted' for past submission dates instead of 'New'. Count=15.",
+    "fix_4_jd_download": "/api/openings/jd/download endpoint at line 1117 returns FileResponse for uploaded JDs.",
+    "fix_5_feedback": "/api/analytics/interviews at line 1173 includes both feedback and remarks fields.",
+    "fix_6_dropoff": "/api/analytics/dropoff-detail at line 926 returns dropped_candidates list with from_count, to_count, dropped_count.",
+    "current_data_counts": {
+      "total_candidates": 60,
+      "active_candidates": 19,
+      "shortlisted": 3,
+      "rejected": 41,
+      "interviews_scheduled": 0,
+      "selected": 1,
+      "pipeline_submitted": 15
+    }
+  }
+}

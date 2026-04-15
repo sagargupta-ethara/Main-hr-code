@@ -140,7 +140,11 @@ const Home = () => {
         }
         case 'shortlisted': {
           const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true });
-          data = r.data.filter(c => (c.resume_status || '').toLowerCase().includes('shortlist'));
+          data = r.data.filter(c => {
+            const rs = (c.resume_status || '').toLowerCase();
+            const fs = (c.final_status || '').toLowerCase();
+            return rs.includes('shortlist') && !fs.includes('reject');
+          });
           title = selectedVendor ? `Shortlisted (${selectedVendor})` : 'Shortlisted Candidates'; break;
         }
         case 'rejected': {

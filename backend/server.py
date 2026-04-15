@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, Depends
+from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict
@@ -406,6 +407,31 @@ def normalize_hr_spoc(name):
     spoc_map = {"pujita": "Pujita Bhuyan", "muskan": "Muskan"}
     return spoc_map.get(name.strip().lower(), name.strip())
 
+def parse_date_flexible(date_str):
+    """Parse various date formats and return a datetime object or None"""
+    if not date_str:
+        return None
+    s = str(date_str).strip()
+    if not s:
+        return None
+    formats = [
+        "%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y",
+        "%m/%d/%Y", "%m/%d/%y", "%d %b %Y", "%d %b %y", "%b %d, %Y",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+def is_future_or_today(date_str):
+    """Check if a date string is today or in the future"""
+    dt = parse_date_flexible(date_str)
+    if not dt:
+        return False
+    return dt.date() >= datetime.now().date()
+
 def determine_current_stage(row: dict) -> str:
     """Determine current pipeline stage for a candidate based on sheet fields"""
     final_status = str(row.get("final_status", "")).lower().strip() if row.get("final_status") else ""
@@ -430,7 +456,7 @@ def determine_current_stage(row: dict) -> str:
     if interview_status_l1:
         return "L1 Interview"
 
-    # Has interview slot → scheduled
+    # Has interview slot → scheduled (only if slot date is valid)
     slot_l1 = str(row.get("interview_slot_l1", "")).strip() if row.get("interview_slot_l1") else ""
     slot_l2 = str(row.get("interview_slot_l2", "")).strip() if row.get("interview_slot_l2") else ""
     if slot_l1 or slot_l2:
@@ -441,6 +467,13 @@ def determine_current_stage(row: dict) -> str:
         return "Rejected"
     if resume_status and "shortlist" in resume_status:
         return "Shortlisted"
+
+    # If submission_date is in the past, mark as Submitted (not New)
+    sub_date = row.get("submission_date")
+    if sub_date:
+        dt = parse_date_flexible(sub_date)
+        if dt and dt.date() < datetime.now().date():
+            return "Submitted"
 
     return "New"
 
@@ -742,12 +775,29 @@ REJECTED_AT_RESUME = {"resume_status": {"$regex": "reject", "$options": "i"}}
 REJECTED_AT_FINAL = {"final_status": {"$regex": "reject", "$options": "i"}}
 REJECTED_ANYWHERE = {"$or": [REJECTED_AT_RESUME, REJECTED_AT_FINAL]}
 NOT_REJECTED = {"$nor": [REJECTED_AT_RESUME, REJECTED_AT_FINAL]}
-SHORTLISTED_QUERY = {"resume_status": {"$regex": "shortlist", "$options": "i"}}
+# Shortlisted = resume_status~shortlist AND NOT final_status~reject
+SHORTLISTED_QUERY = {"$and": [
+    {"resume_status": {"$regex": "shortlist", "$options": "i"}},
+    {"$nor": [REJECTED_AT_FINAL]}
+]}
 HAS_INTERVIEW_SLOT = {"$or": [
     {"interview_slot_l1": {"$ne": None, "$nin": ["", "None"]}},
     {"interview_slot_l2": {"$ne": None, "$nin": ["", "None"]}},
 ]}
 SELECTED_QUERY = {"final_status": {"$regex": "select", "$options": "i"}}
+
+async def count_future_interviews(extra_query=None):
+    """Count candidates with interview slots that are today or future"""
+    q = {**HAS_INTERVIEW_SLOT}
+    if extra_query:
+        q = {"$and": [extra_query, HAS_INTERVIEW_SLOT]}
+    candidates = await db.candidates.find(q, {"_id": 0, "interview_slot_l1": 1, "interview_slot_l2": 1}).to_list(1000)
+    count = 0
+    for c in candidates:
+        slot = c.get("interview_slot_l1") or c.get("interview_slot_l2")
+        if is_future_or_today(slot):
+            count += 1
+    return count
 
 @api_router.get("/analytics/kpis")
 async def get_kpis(user: dict = Depends(get_current_user)):
@@ -767,8 +817,8 @@ async def get_kpis(user: dict = Depends(get_current_user)):
     shortlisted = await db.candidates.count_documents(SHORTLISTED_QUERY)
     # Rejected = rejected at resume screening OR final status
     rejected = await db.candidates.count_documents(REJECTED_ANYWHERE)
-    # Interview Scheduled = has interview slot
-    interviews_scheduled = await db.candidates.count_documents(HAS_INTERVIEW_SLOT)
+    # Interview Scheduled = has interview slot with future/today date
+    interviews_scheduled = await count_future_interviews()
     # Selected = Final Status contains "selected"
     selected = await db.candidates.count_documents(SELECTED_QUERY)
     offer_released = await db.candidates.count_documents({"current_stage": "Offer Released"})
@@ -872,6 +922,49 @@ async def get_vendor_detail(vendor_name: str, user: dict = Depends(get_current_u
             "final_status": m.get("final_status"),
         } for m in members]
     }
+
+@api_router.get("/analytics/dropoff-detail")
+async def get_dropoff_detail(stage_from: str, stage_to: str, user: dict = Depends(get_current_user)):
+    """Get candidates that dropped off between two stages"""
+    all_candidates = await db.candidates.find({}, {"_id": 0}).to_list(1000)
+    
+    def in_stage(c, stage):
+        rs = (c.get("resume_status") or "").lower()
+        fs = (c.get("final_status") or "").lower()
+        cs = c.get("current_stage", "")
+        if stage == "submission":
+            return True
+        elif stage == "shortlist":
+            return "shortlist" in rs
+        elif stage == "interview":
+            return bool(c.get("interview_status_l1") or c.get("interview_slot_l1") or c.get("interview_slot_l2"))
+        elif stage == "selected":
+            return "select" in fs or cs in ["Selected", "Offer Released", "Joined"]
+        elif stage == "offer":
+            return cs in ["Offer Released", "Joined"]
+        return False
+    
+    reached_from = [c for c in all_candidates if in_stage(c, stage_from)]
+    reached_to = [c for c in all_candidates if in_stage(c, stage_to)]
+    to_names = {c.get("candidate_name") for c in reached_to}
+    dropped = [c for c in reached_from if c.get("candidate_name") not in to_names]
+    
+    return {
+        "stage_from": stage_from,
+        "stage_to": stage_to,
+        "from_count": len(reached_from),
+        "to_count": len(reached_to),
+        "dropped_count": len(dropped),
+        "dropped_candidates": [{
+            "candidate_name": c.get("candidate_name"),
+            "role": c.get("role"),
+            "vendor": c.get("vendor"),
+            "current_stage": c.get("current_stage"),
+            "resume_status": c.get("resume_status"),
+            "final_status": c.get("final_status"),
+        } for c in dropped]
+    }
+
 
 @api_router.get("/analytics/roles")
 async def get_role_analytics(user: dict = Depends(get_current_user)):
@@ -1019,6 +1112,23 @@ async def get_jd(role_name: str, user: dict = Depends(get_current_user)):
     """Get JD info for a specific role"""
     jd = await db.job_descriptions.find_one({"role_name": role_name}, {"_id": 0})
     return jd or {"role_name": role_name, "filename": None, "summary": None}
+
+@api_router.get("/openings/jd/download")
+async def download_jd(role_name: str, user: dict = Depends(get_current_user)):
+    """Download/preview the JD file for a specific role"""
+    jd = await db.job_descriptions.find_one({"role_name": role_name}, {"_id": 0})
+    if not jd or not jd.get("file_path"):
+        raise HTTPException(status_code=404, detail="No JD file found for this role")
+    import os
+    fp = jd["file_path"]
+    if not os.path.exists(fp):
+        raise HTTPException(status_code=404, detail="JD file missing from disk")
+    fname = jd.get("filename", "jd.pdf")
+    # Determine media type
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    media_types = {"pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "txt": "text/plain", "md": "text/markdown"}
+    media = media_types.get(ext, "application/octet-stream")
+    return FileResponse(fp, filename=fname, media_type=media)
 
 def normalize_interview_slot(slot_value):
     """Normalize interview slot to a readable date/time format"""
@@ -1313,8 +1423,8 @@ async def get_kpis_filtered(
     shortlisted = await db.candidates.count_documents(q(SHORTLISTED_QUERY))
     # Rejected = rejected at any level
     rejected = await db.candidates.count_documents(q(REJECTED_ANYWHERE))
-    # Interview Scheduled = has interview slot
-    interviews_scheduled = await db.candidates.count_documents(q(HAS_INTERVIEW_SLOT))
+    # Interview Scheduled = has interview slot with future/today date
+    interviews_scheduled = await count_future_interviews(base if base else None)
     # Selected = final_status contains "selected"
     selected = await db.candidates.count_documents(q(SELECTED_QUERY))
     offer_released = await db.candidates.count_documents(q({"current_stage": "Offer Released"}))

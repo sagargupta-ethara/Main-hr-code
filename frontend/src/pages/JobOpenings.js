@@ -220,8 +220,19 @@ const JobOpenings = () => {
                 </div>
                 {jdData?.summary ? (
                   <div>
-                    <p className="text-xs text-slate-500 mb-2">Uploaded: {jdData.filename}</p>
+                    <a
+                      href={`${API_URL}/api/openings/jd/download?role_name=${encodeURIComponent(selectedRole._id)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-semibold mb-2 transition-colors"
+                      data-testid="jd-preview-link"
+                    >
+                      <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      {jdData.filename}
+                      <span className="text-slate-500 font-normal ml-1">(click to preview)</span>
+                    </a>
                     <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700 max-h-40 overflow-y-auto">
+                      <p className="text-xs font-bold text-slate-500 mb-1">JD Summary</p>
                       <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{jdData.summary}</p>
                     </div>
                   </div>

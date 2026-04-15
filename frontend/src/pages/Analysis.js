@@ -67,11 +67,21 @@ const Analysis = () => {
   ];
 
   const dropOffs = [
-    { stage: 'Submission \u2192 Shortlist', dropOff: tc > 0 ? (((tc - sl) / tc) * 100).toFixed(0) : 0, lost: tc - sl, from: tc },
-    { stage: 'Shortlist \u2192 Interview', dropOff: sl > 0 ? (((sl - iv) / sl) * 100).toFixed(0) : 0, lost: sl - iv, from: sl },
-    { stage: 'Interview \u2192 Selected', dropOff: iv > 0 ? (((iv - sel) / iv) * 100).toFixed(0) : 0, lost: iv - sel, from: iv },
-    { stage: 'Selected \u2192 Offer', dropOff: sel > 0 ? (((sel - ofr - jn) / sel) * 100).toFixed(0) : 0, lost: sel - ofr - jn, from: sel },
+    { stage: 'Submission \u2192 Shortlist', dropOff: tc > 0 ? (((tc - sl) / tc) * 100).toFixed(0) : 0, lost: tc - sl, from: tc, stageFrom: 'submission', stageTo: 'shortlist' },
+    { stage: 'Shortlist \u2192 Interview', dropOff: sl > 0 ? (((sl - iv) / sl) * 100).toFixed(0) : 0, lost: sl - iv, from: sl, stageFrom: 'shortlist', stageTo: 'interview' },
+    { stage: 'Interview \u2192 Selected', dropOff: iv > 0 ? (((iv - sel) / iv) * 100).toFixed(0) : 0, lost: iv - sel, from: iv, stageFrom: 'interview', stageTo: 'selected' },
+    { stage: 'Selected \u2192 Offer', dropOff: sel > 0 ? (((sel - ofr - jn) / sel) * 100).toFixed(0) : 0, lost: sel - ofr - jn, from: sel, stageFrom: 'selected', stageTo: 'offer' },
   ];
+
+  const handleDropOffClick = async (d) => {
+    setSelectedMetric({ label: d.stage, value: d.dropOff, detail: `${d.lost} candidates lost from ${d.from}`, color: 'text-red-400', loading: true, candidates: null });
+    try {
+      const res = await axios.get(`${API_URL}/api/analytics/dropoff-detail?stage_from=${d.stageFrom}&stage_to=${d.stageTo}`, { withCredentials: true });
+      setSelectedMetric(prev => ({ ...prev, loading: false, candidates: res.data.dropped_candidates, fromCount: res.data.from_count, toCount: res.data.to_count }));
+    } catch {
+      setSelectedMetric(prev => ({ ...prev, loading: false }));
+    }
+  };
 
   // Pipeline data with stage-specific colors
   const coloredPipeline = pipelineData.map(d => {
@@ -81,7 +91,7 @@ const Analysis = () => {
     else if (s.includes('select') || s.includes('offer') || s.includes('join')) fill = '#34D399';
     else if (s.includes('shortlist')) fill = '#A78BFA';
     else if (s.includes('interview') || s.includes('l1') || s.includes('l2')) fill = '#FBBF24';
-    else if (s.includes('new')) fill = '#60A5FA';
+    else if (s.includes('new') || s.includes('submit')) fill = '#60A5FA';
     return { ...d, fill };
   });
 
@@ -112,7 +122,7 @@ const Analysis = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {dropOffs.map((d, i) => (
-            <div key={i} onClick={() => setSelectedMetric({ label: d.stage, value: d.dropOff, detail: `${d.lost} candidates lost from ${d.from}`, color: 'text-red-400' })}
+            <div key={i} onClick={() => handleDropOffClick(d)}
               className="bg-slate-800/30 rounded-xl p-3.5 border border-slate-800 cursor-pointer hover:bg-slate-800/50 transition-all">
               <p className="text-xs text-slate-500 mb-1.5">{d.stage}</p>
               <div className="flex items-end gap-1.5">
@@ -296,16 +306,63 @@ const Analysis = () => {
       {/* Metric Detail Modal */}
       {selectedMetric && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedMetric(null)}>
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 card-glow" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
+          <div className={`bg-slate-900 border border-slate-800 rounded-2xl ${selectedMetric.candidates ? 'max-w-3xl' : 'max-w-sm'} w-full max-h-[80vh] overflow-hidden card-glow`} onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-5 border-b border-slate-800">
               <h2 className="text-lg font-bold text-white">{selectedMetric.label}</h2>
               <button onClick={() => setSelectedMetric(null)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" strokeWidth={1.5} /></button>
             </div>
-            <div className="text-center mb-4">
-              <p className={`text-4xl font-bold ${selectedMetric.color || 'text-cyan-400'} font-mono`}>{selectedMetric.value}%</p>
+            <div className="p-5 overflow-y-auto max-h-[calc(80vh-80px)]">
+              <div className="text-center mb-4">
+                <p className={`text-4xl font-bold ${selectedMetric.color || 'text-cyan-400'} font-mono`}>{selectedMetric.value}%</p>
+                <p className="text-sm text-slate-400 mt-2">{selectedMetric.detail}</p>
+              </div>
+              {selectedMetric.fromCount !== undefined && (
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800 text-center">
+                    <p className="text-[10px] text-slate-500 mb-1">Entered Stage</p>
+                    <p className="text-xl font-bold text-white font-mono">{selectedMetric.fromCount}</p>
+                  </div>
+                  <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-800 text-center">
+                    <p className="text-[10px] text-slate-500 mb-1">Moved Forward</p>
+                    <p className="text-xl font-bold text-emerald-400 font-mono">{selectedMetric.toCount}</p>
+                  </div>
+                </div>
+              )}
+              {selectedMetric.loading && <div className="text-center py-4 text-sm text-slate-500">Loading details...</div>}
+              {selectedMetric.candidates && selectedMetric.candidates.length > 0 && (
+                <div className="bg-slate-800/30 rounded-xl border border-slate-800 overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-slate-800">
+                    <p className="text-xs font-bold text-red-400">Dropped Off ({selectedMetric.candidates.length})</p>
+                  </div>
+                  <div className="max-h-[250px] overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="sticky top-0"><tr className="bg-slate-900 border-b border-slate-800">
+                        <th className="text-left py-2 px-3 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Name</th>
+                        <th className="text-left py-2 px-3 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Role</th>
+                        <th className="text-left py-2 px-3 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Vendor</th>
+                        <th className="text-left py-2 px-3 text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-slate-900">Stage</th>
+                      </tr></thead>
+                      <tbody>
+                        {selectedMetric.candidates.map((c, i) => (
+                          <tr key={i} className="border-b border-slate-800/30 hover:bg-slate-800/30">
+                            <td className="py-2 px-3 text-sm text-white font-medium">{c.candidate_name}</td>
+                            <td className="py-2 px-3 text-xs text-slate-400">{c.role}</td>
+                            <td className="py-2 px-3 text-xs text-slate-400">{c.vendor}</td>
+                            <td className="py-2 px-3"><span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              (c.current_stage || '').includes('Reject') ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                              'bg-slate-700 text-slate-300 border border-slate-600'
+                            }`}>{c.current_stage}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {selectedMetric.candidates && selectedMetric.candidates.length === 0 && (
+                <p className="text-center text-sm text-slate-500 py-4">No candidates dropped at this stage</p>
+              )}
             </div>
-            <p className="text-sm text-slate-400 text-center mb-4">{selectedMetric.detail}</p>
-            <button onClick={() => setSelectedMetric(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl transition-all font-semibold text-sm">Close</button>
           </div>
         </div>
       )}
