@@ -11,6 +11,9 @@ function parseFlexDate(str) {
   if (!str) return null;
   const s = str.trim();
   const fmts = [
+    // "09/04/26, 4:00 PM" or "09/04/26, 16:00" (dd/mm/yy, h:mm AM/PM IST)
+    [/^(\d{1,2})\/(\d{1,2})\/(\d{2}),?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?/i, (m) => new Date(2000 + +m[3], +m[2]-1, +m[1])],
+    [/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+\d{1,2}:\d{2}/, (m) => new Date(+m[3], +m[2]-1, +m[1])],
     [/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, (m) => new Date(+m[3], +m[2]-1, +m[1])],
     [/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/, (m) => new Date(2000 + +m[3], +m[2]-1, +m[1])],
     [/^(\d{4})-(\d{2})-(\d{2})/, (m) => new Date(+m[1], +m[2]-1, +m[3])],
@@ -19,6 +22,14 @@ function parseFlexDate(str) {
   return null;
 }
 function fmtKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function extractTime(str) {
+  if (!str) return null;
+  // Match "4:00 PM", "16:00", etc. after a comma
+  const m = str.match(/,?\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
+  if (m) return m[1].trim() + ' IST';
+  return null;
+}
 
 const Interviews = () => {
   const [candidates, setCandidates] = useState([]);
@@ -50,9 +61,9 @@ const Interviews = () => {
       const subDate = parseFlexDate(c.submission_date);
       if (subDate) add(fmtKey(subDate), 'submissions', c);
       const slot1 = parseFlexDate(c.interview_slot_l1);
-      if (slot1) add(fmtKey(slot1), 'interviews', c);
+      if (slot1) add(fmtKey(slot1), 'interviews', { ...c, _time: extractTime(c.interview_slot_l1), _level: 'L1' });
       const slot2 = parseFlexDate(c.interview_slot_l2);
-      if (slot2) add(fmtKey(slot2), 'interviews', c);
+      if (slot2) add(fmtKey(slot2), 'interviews', { ...c, _time: extractTime(c.interview_slot_l2), _level: 'L2' });
     });
     return map;
   }, [candidates]);
@@ -98,7 +109,7 @@ const Interviews = () => {
       </div>
 
       {/* Calendar */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-xl overflow-hidden" data-testid="calendar-grid">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-xl overflow-hidden w-full" data-testid="calendar-grid">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
           <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors" data-testid="cal-prev">
@@ -122,7 +133,7 @@ const Interviews = () => {
         {/* Cells */}
         <div className="grid grid-cols-7">
           {cells.map((date, i) => {
-            if (!date) return <div key={i} className="min-h-[80px] border-b border-r border-[var(--border-subtle)] bg-[var(--bg-base)]/30" />;
+            if (!date) return <div key={i} className="min-h-[72px] border-b border-r border-[var(--border-subtle)] bg-[var(--bg-base)]/20" />;
             const key = fmtKey(date);
             const ev = eventMap[key];
             const isToday = key === todayKey;
@@ -132,7 +143,7 @@ const Interviews = () => {
 
             return (
               <div key={i} onClick={() => handleDateClick(date)}
-                className={`min-h-[80px] border-b border-r border-[var(--border-subtle)] p-1.5 transition-colors ${
+                className={`min-h-[72px] border-b border-r border-[var(--border-subtle)] p-1 transition-colors ${
                   hasEvents ? 'cursor-pointer hover:bg-[var(--bg-raised)]' : ''
                 } ${isToday ? 'bg-cyan-500/5' : ''}`}
                 data-testid={`cal-day-${key}`}>
@@ -232,6 +243,8 @@ const Interviews = () => {
                           <span>Vendor: <span className="text-[var(--text-primary)]">{c.vendor}</span></span>
                           {c.interview_status_l1 && <span>L1: <span className="text-amber-400">{c.interview_status_l1}</span></span>}
                           {c.interview_status_l2 && <span>L2: <span className="text-amber-400">{c.interview_status_l2}</span></span>}
+                          {c._time && <span>Time: <span className="text-amber-400 font-semibold">{c._time}</span></span>}
+                          {c._level && !c.interview_status_l1 && <span>Level: <span className="text-amber-400">{c._level}</span></span>}
                           {c.interviewer_name_l1 && <span>Interviewer: <span className="text-[var(--text-primary)]">{c.interviewer_name_l1}</span></span>}
                           {c.resume_link && <a href={c.resume_link} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline flex items-center gap-0.5"><FileText className="w-3 h-3" strokeWidth={1.5} />Resume</a>}
                         </div>

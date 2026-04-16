@@ -415,6 +415,8 @@ def parse_date_flexible(date_str):
     if not s:
         return None
     formats = [
+        "%d/%m/%y, %I:%M %p", "%d/%m/%y, %H:%M",
+        "%d/%m/%Y, %I:%M %p", "%d/%m/%Y, %H:%M",
         "%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y",
         "%m/%d/%Y", "%m/%d/%y", "%d %b %Y", "%d %b %y", "%b %d, %Y",
     ]
@@ -881,6 +883,21 @@ async def get_vendor_list(user: dict = Depends(get_current_user)):
     result = await db.candidates.aggregate(pipeline).to_list(100)
     return [r["_id"] for r in result if r["_id"]]
 
+@api_router.get("/analytics/role-distribution")
+async def get_role_distribution(user: dict = Depends(get_current_user), vendor: Optional[str] = None):
+    """Get role-wise candidate count. If vendor specified, role distribution for that vendor."""
+    match = {}
+    if vendor:
+        match["vendor"] = {"$regex": f"^{vendor}$", "$options": "i"}
+    pipeline = [
+        *([{"$match": match}] if match else []),
+        {"$match": {"role": {"$ne": None}}},
+        {"$group": {"_id": "$role", "total": {"$sum": 1}}},
+        {"$sort": {"total": -1}}
+    ]
+    return await db.candidates.aggregate(pipeline).to_list(100)
+
+
 @api_router.get("/analytics/vendor-detail")
 async def get_vendor_detail(vendor_name: str, user: dict = Depends(get_current_user)):
     """Detailed vendor performance with member list"""
@@ -1140,15 +1157,25 @@ def normalize_interview_slot(slot_value):
     
     # Try parsing common date formats
     date_formats = [
-        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
-        "%d-%m-%Y %H:%M", "%d-%m-%Y", "%d/%m/%Y %H:%M", "%d/%m/%Y",
-        "%m/%d/%Y %H:%M", "%m/%d/%Y", "%d %b %Y %H:%M", "%d %b %Y",
-        "%b %d, %Y %H:%M", "%b %d, %Y", "%d-%b-%Y", "%d %B %Y",
+        # dd/mm/yy, h:mm PM (IST) - e.g., "09/04/26, 4:00 PM"
+        ("%d/%m/%y, %I:%M %p", True),
+        ("%d/%m/%y, %H:%M", True),
+        ("%d/%m/%Y, %I:%M %p", True),
+        ("%d/%m/%Y, %H:%M", True),
+        ("%Y-%m-%d %H:%M:%S", False), ("%Y-%m-%d %H:%M", False), ("%Y-%m-%d", False),
+        ("%d-%m-%Y %H:%M", False), ("%d-%m-%Y", False),
+        ("%d/%m/%Y %H:%M", False), ("%d/%m/%Y", False),
+        ("%m/%d/%Y %H:%M", False), ("%m/%d/%Y", False),
+        ("%d %b %Y %H:%M", False), ("%d %b %Y", False),
+        ("%b %d, %Y %H:%M", False), ("%b %d, %Y", False),
+        ("%d-%b-%Y", False), ("%d %B %Y", False),
     ]
-    for fmt in date_formats:
+    for item in date_formats:
+        fmt, ist = item
         try:
             dt = datetime.strptime(slot, fmt)
-            return dt.strftime("%b %d, %Y %I:%M %p") if dt.hour or dt.minute else dt.strftime("%b %d, %Y")
+            suffix = " IST" if ist else ""
+            return (dt.strftime("%b %d, %Y %I:%M %p") + suffix) if dt.hour or dt.minute else dt.strftime("%b %d, %Y")
         except ValueError:
             continue
     

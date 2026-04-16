@@ -40,6 +40,8 @@ const Home = () => {
   const [vendorDetail, setVendorDetail] = useState(null);
   const [vendorDetailLoading, setVendorDetailLoading] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState(null);
+  const [pieData, setPieData] = useState([]);
+  const [pieLabel, setPieLabel] = useState('Vendor Contributions');
 
   useBodyScrollLock(!!modalData || showUploadModal || !!analysisVendor || !!selectedMetric);
 
@@ -75,6 +77,17 @@ const Home = () => {
         shortlistRate: v.total > 0 ? ((v.shortlisted / v.total) * 100).toFixed(1) : 0,
         selectionRate: v.total > 0 ? ((v.selected / v.total) * 100).toFixed(1) : 0,
       })));
+      // Pie chart: vendor selected → role-wise, all vendors → vendor-wise
+      if (vendor) {
+        try {
+          const roleRes = await axios.get(`${API_URL}/api/analytics/role-distribution?vendor=${encodeURIComponent(vendor)}`, { withCredentials: true });
+          setPieData(roleRes.data);
+          setPieLabel(`Role Breakdown (${vendor})`);
+        } catch { setPieData([]); }
+      } else {
+        setPieData(vendorsRes.data);
+        setPieLabel('Vendor Contributions');
+      }
     } catch (error) { console.error('Error:', error); }
     finally { setLoading(false); }
   }, []);
@@ -293,13 +306,13 @@ const Home = () => {
           </ResponsiveContainer>
         </div>
         <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-2xl p-5 ">
-          <h3 className="text-base font-bold text-[var(--text-primary)] mb-1">Vendor Contributions</h3>
-          <p className="text-xs text-[var(--text-muted)] mb-4">Candidates submitted per vendor</p>
+          <h3 className="text-base font-bold text-[var(--text-primary)] mb-1">{pieLabel}</h3>
+          <p className="text-xs text-[var(--text-muted)] mb-4">{selectedVendor ? `Role distribution for ${selectedVendor}` : 'Candidates submitted per vendor'}</p>
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
-              <Pie data={vendorData} dataKey="total" nameKey="_id" cx="50%" cy="50%" outerRadius={95}
+              <Pie data={pieData} dataKey="total" nameKey="_id" cx="50%" cy="50%" outerRadius={95}
                 label={({ _id, total }) => `${_id}: ${total}`} labelStyle={{ fill: '#8896AB', fontSize: 11 }}>
-                {vendorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid var(--border-default)', borderRadius: '10px', color: '#E8ECF1' }} />
             </PieChart>
