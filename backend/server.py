@@ -112,6 +112,7 @@ async def sync_candidates_from_google():
         # Map columns (same as Excel parsing)
         column_mapping = {
             "S.No": "s_no",
+            "S.No.": "s_no",
             "Role/Position": "role",
             "Profile Submission Date": "submission_date",
             "Candidate Name": "candidate_name",
@@ -126,30 +127,42 @@ async def sync_candidates_from_google():
             "ECTC": "ectc",
             "Notice Period": "notice_period",
             "Current Location": "current_location",
+            " Current Location": "current_location",
             "Job Location": "job_location",
             "Assessment Round": "assessment_round",
             "Interview Slot": "interview_slot_l1",
             "Interview Status (L1)": "interview_status_l1",
             "Interviewer Name (L1)": "interviewer_name_l1",
+            "L1 Feedback": "interview_feedback_l1",
             "Interview Status (L2)": "interview_status_l2",
             "Interviewer Name (L2)": "interviewer_name_l2",
+            "L2 Feedback": "interview_feedback_l2",
             "Final Status (Selected/Rejected)": "final_status",
             "Offer Released": "offer_released",
             "Joining Date": "joining_date",
             "Remarks": "remarks",
             "Vendor": "vendor"
         }
-        
-        # Handle L2 interview slot column
-        if len([col for col in df.columns if "Interview Slot" in str(col)]) > 1:
-            cols = df.columns.tolist()
-            for i, col in enumerate(cols):
-                if "Interview Slot" in str(col):
-                    if i > 15:
-                        df.rename(columns={col: "Interview Slot (L2)"}, inplace=True)
-        
+
+        # Rename pandas-auto-deduped duplicate column "Interview Slot.1" to L2 BEFORE broad mapping.
+        # Google Sheets / Excel has two columns both titled "Interview Slot"; pandas suffixes the
+        # second occurrence with ".1". We must rename it explicitly, otherwise the index-based
+        # heuristic below would clobber BOTH columns and lose interview_slot_l1 entirely.
+        if "Interview Slot.1" in df.columns:
+            df.rename(columns={"Interview Slot.1": "interview_slot_l2"}, inplace=True)
+        else:
+            # Fallback: if the source exposes two identical "Interview Slot" columns (rare),
+            # treat the later-positioned one (index > 17) as L2.
+            slot_cols = [c for c in df.columns if str(c).strip() == "Interview Slot"]
+            if len(slot_cols) > 1:
+                cols = df.columns.tolist()
+                second_idx = [i for i, c in enumerate(cols) if str(c).strip() == "Interview Slot"][1]
+                # Rename by positional label using a unique temp name to avoid collision
+                new_cols = cols.copy()
+                new_cols[second_idx] = "interview_slot_l2"
+                df.columns = new_cols
+
         df.rename(columns=column_mapping, inplace=True)
-        df.rename(columns={"Interview Slot (L2)": "interview_slot_l2"}, inplace=True)
         
         # Clear existing candidates
         await db.candidates.delete_many({})
@@ -190,9 +203,11 @@ async def sync_candidates_from_google():
                 "interview_slot_l1": safe_get("interview_slot_l1"),
                 "interview_status_l1": safe_get("interview_status_l1"),
                 "interviewer_name_l1": safe_get("interviewer_name_l1"),
+                "interview_feedback_l1": safe_get("interview_feedback_l1"),
                 "interview_slot_l2": safe_get("interview_slot_l2"),
                 "interview_status_l2": safe_get("interview_status_l2"),
                 "interviewer_name_l2": safe_get("interviewer_name_l2"),
+                "interview_feedback_l2": safe_get("interview_feedback_l2"),
                 "final_status": safe_get("final_status"),
                 "offer_released": safe_get("offer_released"),
                 "joining_date": parse_excel_date(safe_get("joining_date")),
@@ -320,9 +335,11 @@ class CandidateResponse(BaseModel):
     interview_slot_l1: Optional[str] = None
     interview_status_l1: Optional[str] = None
     interviewer_name_l1: Optional[str] = None
+    interview_feedback_l1: Optional[str] = None
     interview_slot_l2: Optional[str] = None
     interview_status_l2: Optional[str] = None
     interviewer_name_l2: Optional[str] = None
+    interview_feedback_l2: Optional[str] = None
     final_status: Optional[str] = None
     offer_released: Optional[str] = None
     joining_date: Optional[str] = None
@@ -537,6 +554,7 @@ async def parse_and_store_excel(file_content: bytes):
         # Map columns
         column_mapping = {
             "S.No": "s_no",
+            "S.No.": "s_no",
             "Role/Position": "role",
             "Profile Submission Date": "submission_date",
             "Candidate Name": "candidate_name",
@@ -551,30 +569,37 @@ async def parse_and_store_excel(file_content: bytes):
             "ECTC": "ectc",
             "Notice Period": "notice_period",
             "Current Location": "current_location",
+            " Current Location": "current_location",
             "Job Location": "job_location",
             "Assessment Round": "assessment_round",
             "Interview Slot": "interview_slot_l1",
             "Interview Status (L1)": "interview_status_l1",
             "Interviewer Name (L1)": "interviewer_name_l1",
+            "L1 Feedback": "interview_feedback_l1",
             "Interview Status (L2)": "interview_status_l2",
             "Interviewer Name (L2)": "interviewer_name_l2",
+            "L2 Feedback": "interview_feedback_l2",
             "Final Status (Selected/Rejected)": "final_status",
             "Offer Released": "offer_released",
             "Joining Date": "joining_date",
             "Remarks": "remarks",
             "Vendor": "vendor"
         }
-        
-        # Handle L2 interview slot column (appears twice)
-        if len([col for col in df.columns if "Interview Slot" in str(col)]) > 1:
-            cols = df.columns.tolist()
-            for i, col in enumerate(cols):
-                if "Interview Slot" in str(col):
-                    if i > 15:  # Second occurrence
-                        df.rename(columns={col: "Interview Slot (L2)"}, inplace=True)
-        
+
+        # Rename pandas-auto-deduped "Interview Slot.1" (L2) before broad mapping — same
+        # reasoning as Google Sheets sync; see sync_candidates_from_google().
+        if "Interview Slot.1" in df.columns:
+            df.rename(columns={"Interview Slot.1": "interview_slot_l2"}, inplace=True)
+        else:
+            slot_cols = [c for c in df.columns if str(c).strip() == "Interview Slot"]
+            if len(slot_cols) > 1:
+                cols = df.columns.tolist()
+                second_idx = [i for i, c in enumerate(cols) if str(c).strip() == "Interview Slot"][1]
+                new_cols = cols.copy()
+                new_cols[second_idx] = "interview_slot_l2"
+                df.columns = new_cols
+
         df.rename(columns=column_mapping, inplace=True)
-        df.rename(columns={"Interview Slot (L2)": "interview_slot_l2"}, inplace=True)
         
         # Clear existing candidates
         await db.candidates.delete_many({})
@@ -620,9 +645,11 @@ async def parse_and_store_excel(file_content: bytes):
                 "interview_slot_l1": safe_get("interview_slot_l1"),
                 "interview_status_l1": safe_get("interview_status_l1"),
                 "interviewer_name_l1": safe_get("interviewer_name_l1"),
+                "interview_feedback_l1": safe_get("interview_feedback_l1"),
                 "interview_slot_l2": safe_get("interview_slot_l2"),
                 "interview_status_l2": safe_get("interview_status_l2"),
                 "interviewer_name_l2": safe_get("interviewer_name_l2"),
+                "interview_feedback_l2": safe_get("interview_feedback_l2"),
                 "final_status": safe_get("final_status"),
                 "offer_released": safe_get("offer_released"),
                 "joining_date": parse_excel_date(safe_get("joining_date")),
