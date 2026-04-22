@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://hr-dashboard-preview-6.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://vendor-hiring.preview.emergentagent.com')
 
 class TestAuth:
     """Authentication endpoint tests"""

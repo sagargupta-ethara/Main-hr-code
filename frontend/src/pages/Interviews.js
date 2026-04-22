@@ -7,24 +7,38 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// Parse Interview Slot strings like:
+//   "14/04/26 at 4:00 PM"   (dd/mm/yy at h:mm AM/PM)
+//   "14/04/26, 4:00 PM"     (dd/mm/yy, h:mm AM/PM)
+//   "14/04/2026 at 4:00 PM"
+//   "14/04/26"              (date only)
+//   "2026-04-14"            (ISO)
+// Only the leading date portion is used to place the interview on the calendar.
 function parseFlexDate(str) {
   if (!str) return null;
-  const s = str.trim();
+  const s = String(str).trim();
+  if (!s) return null;
   const fmts = [
-    [/^(\d{1,2})\/(\d{1,2})\/(\d{2}),?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?/i, m => new Date(2000 + +m[3], +m[2]-1, +m[1])],
-    [/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+\d{1,2}:\d{2}/, m => new Date(+m[3], +m[2]-1, +m[1])],
-    [/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, m => new Date(+m[3], +m[2]-1, +m[1])],
-    [/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/, m => new Date(2000 + +m[3], +m[2]-1, +m[1])],
-    [/^(\d{4})-(\d{2})-(\d{2})/, m => new Date(+m[1], +m[2]-1, +m[3])],
+    // dd/mm/yy  (2-digit year) — matches even when followed by " at 4:00 PM", ", 4:00 PM", etc.
+    [/^(\d{1,2})\/(\d{1,2})\/(\d{2})\b/, m => new Date(2000 + +m[3], +m[2] - 1, +m[1])],
+    // dd/mm/yyyy (4-digit year)
+    [/^(\d{1,2})\/(\d{1,2})\/(\d{4})\b/, m => new Date(+m[3], +m[2] - 1, +m[1])],
+    // ISO yyyy-mm-dd
+    [/^(\d{4})-(\d{2})-(\d{2})/, m => new Date(+m[1], +m[2] - 1, +m[3])],
   ];
-  for (const [re, fn] of fmts) { const m = s.match(re); if (m) { const d = fn(m); if (!isNaN(d)) return d; } }
+  for (const [re, fn] of fmts) {
+    const m = s.match(re);
+    if (m) { const d = fn(m); if (!isNaN(d)) return d; }
+  }
   return null;
 }
 function fmtKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+// Extract time portion from Interview Slot. Supports " at 4:00 PM", ", 4:00 PM", " 4:00 PM", "16:00".
 function extractTime(str) {
   if (!str) return null;
-  const m = str.match(/,?\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
-  return m ? m[1].trim() + ' IST' : null;
+  const s = String(str);
+  const m = s.match(/(?:\bat\b|,)?\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
+  return m ? m[1].trim().toUpperCase() + ' IST' : null;
 }
 
 const Interviews = () => {
@@ -51,11 +65,13 @@ const Interviews = () => {
       map[key][type].push(item);
     };
     candidates.forEach(c => {
-      // Profile submission events
+      // Profile submission events — submission date is ONLY used as submission data,
+      // never as an interview date.
       const subDate = parseFlexDate(c.submission_date);
       if (subDate) add(fmtKey(subDate), 'submissions', c);
 
-      // Interview slot events (dd/mm/yy, time format)
+      // Interview events are driven EXCLUSIVELY by Interview Slot (L1 / L2) fields.
+      // If the Interview Slot changes or is removed, the calendar reflects that.
       const slot1 = parseFlexDate(c.interview_slot_l1);
       if (slot1) {
         add(fmtKey(slot1), 'interviews', { ...c, _time: extractTime(c.interview_slot_l1), _level: 'L1', _slotRaw: c.interview_slot_l1 });
@@ -63,11 +79,6 @@ const Interviews = () => {
       const slot2 = parseFlexDate(c.interview_slot_l2);
       if (slot2) {
         add(fmtKey(slot2), 'interviews', { ...c, _time: extractTime(c.interview_slot_l2), _level: 'L2', _slotRaw: c.interview_slot_l2 });
-      }
-
-      // If candidate has interview_status but no slot, show as "interviewed" on submission date
-      if (!slot1 && !slot2 && c.interview_status_l1 && subDate) {
-        add(fmtKey(subDate), 'interviews', { ...c, _time: null, _level: 'L1', _slotRaw: null, _noSlot: true });
       }
     });
     return map;
@@ -184,35 +195,71 @@ const Interviews = () => {
                 <div>
                   <div className="flex items-center gap-2 mb-2"><div className="w-2 h-2 rounded-full bg-amber-500" /><h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Interviews ({selectedDate.interviews.length})</h3></div>
                   <div className="space-y-2">
-                    {selectedDate.interviews.map((c, i) => (
-                      <div key={i} className="bg-[var(--bg-raised)] rounded-lg p-3 border border-[var(--border-subtle)]">
+                    {selectedDate.interviews.map((c, i) => {
+                      const lvl = c._level || 'L1';
+                      const statusField = lvl === 'L2' ? c.interview_status_l2 : c.interview_status_l1;
+                      const interviewerField = lvl === 'L2' ? c.interviewer_name_l2 : c.interviewer_name_l1;
+                      const feedbackField = lvl === 'L2' ? c.interview_feedback_l2 : c.interview_feedback_l1;
+                      return (
+                      <div key={i} className="bg-[var(--bg-raised)] rounded-lg p-3 border border-[var(--border-subtle)]" data-testid={`interview-card-${i}`}>
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <User className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
-                            <span className="text-sm font-semibold text-[var(--text-primary)]">{c.candidate_name}</span>
-                            {c._level && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">{c._level}</span>}
+                            <span className="text-sm font-semibold text-[var(--text-primary)]">{c.candidate_name || '—'}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">{lvl}</span>
                           </div>
                           <StatusBadge status={c.current_stage} />
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-secondary)] mt-1.5">
-                          <span>Role: <span className="text-[var(--text-primary)]">{c.role}</span></span>
-                          <span>Vendor: <span className="text-[var(--text-primary)]">{c.vendor}</span></span>
-                          {c._time && <span>Time: <span className="text-amber-400 font-semibold">{c._time}</span></span>}
-                          {c._noSlot && <span className="text-[var(--text-muted)]">(no slot data)</span>}
-                          {c.interview_status_l1 && <span>L1 Status: <span className={`font-semibold ${c.interview_status_l1.toLowerCase().includes('reject') ? 'text-red-400' : 'text-emerald-400'}`}>{c.interview_status_l1}</span></span>}
-                          {c.interview_status_l2 && <span>L2 Status: <span className="text-amber-400 font-semibold">{c.interview_status_l2}</span></span>}
-                          {c.interviewer_name_l1 && <span>Interviewer: <span className="text-[var(--text-primary)]">{c.interviewer_name_l1}</span></span>}
-                          {c.resume_link && <a href={c.resume_link} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline flex items-center gap-0.5"><FileText className="w-3 h-3" strokeWidth={1.5} />Resume</a>}
+                        {/* Interview date + time (driven by Interview Slot) */}
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <CalIcon className="w-3 h-3 text-amber-400" strokeWidth={1.5} />
+                          <span className="text-[11px] text-[var(--text-secondary)]">
+                            {selectedDate.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {c._time && <> &middot; <span className="text-amber-400 font-semibold">{c._time}</span></>}
+                          </span>
+                          {c._slotRaw && <span className="text-[10px] text-[var(--text-muted)] ml-1">(slot: {c._slotRaw})</span>}
                         </div>
-                        {/* Feedback / Remark */}
-                        {(c.interview_feedback_l1 || c.remarks) && (
+                        {/* Core candidate info */}
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-[var(--text-secondary)] mb-1.5">
+                          {c.role && <span>Role: <span className="text-[var(--text-primary)]">{c.role}</span></span>}
+                          {c.vendor && <span>Vendor: <span className="text-[var(--text-primary)]">{c.vendor}</span></span>}
+                          {c.email && <span className="truncate">Email: <span className="text-[var(--text-primary)]">{c.email}</span></span>}
+                          {c.contact_number && <span>Phone: <span className="text-[var(--text-primary)]">{c.contact_number}</span></span>}
+                          {c.work_experience && <span>Experience: <span className="text-[var(--text-primary)]">{c.work_experience}</span></span>}
+                          {c.rel_experience && <span>Rel Exp: <span className="text-[var(--text-primary)]">{c.rel_experience}</span></span>}
+                          {c.ctc && <span>CTC: <span className="text-[var(--text-primary)]">{c.ctc}</span></span>}
+                          {c.ectc && <span>ECTC: <span className="text-[var(--text-primary)]">{c.ectc}</span></span>}
+                          {c.notice_period && <span>Notice: <span className="text-[var(--text-primary)]">{c.notice_period}</span></span>}
+                          {c.current_location && <span>Location: <span className="text-[var(--text-primary)]">{c.current_location}</span></span>}
+                          {c.job_location && <span>Job Loc: <span className="text-[var(--text-primary)]">{c.job_location}</span></span>}
+                          {c.hr_spoc && <span>HR SPOC: <span className="text-[var(--text-primary)]">{c.hr_spoc}</span></span>}
+                          {c.submission_date && <span>Submitted: <span className="text-[var(--text-primary)]">{c.submission_date}</span></span>}
+                          {interviewerField && <span>Interviewer ({lvl}): <span className="text-[var(--text-primary)]">{interviewerField}</span></span>}
+                          {statusField && <span>{lvl} Status: <span className={`font-semibold ${String(statusField).toLowerCase().includes('reject') ? 'text-red-400' : 'text-emerald-400'}`}>{statusField}</span></span>}
+                          {c.final_status && <span>Final: <span className={`font-semibold ${String(c.final_status).toLowerCase().includes('reject') ? 'text-red-400' : 'text-emerald-400'}`}>{c.final_status}</span></span>}
+                          {c.assessment_round && <span>Assessment: <span className="text-[var(--text-primary)]">{c.assessment_round}</span></span>}
+                        </div>
+                        {c.resume_link && (
+                          <a href={c.resume_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 underline mb-1.5" data-testid={`interview-resume-link-${i}`}>
+                            <FileText className="w-3 h-3" strokeWidth={1.5} />Resume
+                          </a>
+                        )}
+                        {/* Feedback */}
+                        {feedbackField && (
                           <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
-                            <p className="text-[10px] text-[var(--text-muted)] mb-0.5">{c.interview_feedback_l1 ? 'L1 Feedback' : 'Remark'}</p>
-                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{c.interview_feedback_l1 || c.remarks}</p>
+                            <p className="text-[10px] text-[var(--text-muted)] mb-0.5">{lvl} Feedback</p>
+                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{feedbackField}</p>
+                          </div>
+                        )}
+                        {/* Remarks (shown separately, even if feedback exists) */}
+                        {c.remarks && (
+                          <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
+                            <p className="text-[10px] text-[var(--text-muted)] mb-0.5">Remarks</p>
+                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{c.remarks}</p>
                           </div>
                         )}
                       </div>
-                    ))}
+                    );})}
                   </div>
                 </div>
               )}
