@@ -408,7 +408,7 @@ def normalize_status(status: str) -> str:
     if "reject" in status_lower:
         return "Rejected"
     elif "shortlist" in status_lower:
-        return "Shortlisted"
+        return "Screening Passed"
     elif "select" in status_lower:
         return "Selected"
     elif "hold" in status_lower:
@@ -485,7 +485,7 @@ def determine_current_stage(row: dict) -> str:
     if resume_status and "reject" in resume_status:
         return "Rejected"
     if resume_status and "shortlist" in resume_status:
-        return "Shortlisted"
+        return "Screening Passed"
 
     # If submission_date is in the past, mark as Submitted (not New)
     sub_date = row.get("submission_date")
@@ -846,8 +846,8 @@ async def get_kpis(user: dict = Depends(get_current_user)):
     shortlisted = await db.candidates.count_documents(SHORTLISTED_QUERY)
     # Rejected = rejected at resume screening OR final status
     rejected = await db.candidates.count_documents(REJECTED_ANYWHERE)
-    # Interview Scheduled = has interview slot with future/today date
-    interviews_scheduled = await count_future_interviews()
+    # Interview Scheduled = has any valid Interview Slot value (L1 or L2) — sheet-driven.
+    interviews_scheduled = await db.candidates.count_documents(HAS_INTERVIEW_SLOT)
     # Selected = Final Status contains "selected"
     selected = await db.candidates.count_documents(SELECTED_QUERY)
     offer_released = await db.candidates.count_documents({"current_stage": "Offer Released"})
@@ -890,7 +890,7 @@ async def get_vendor_analytics(user: dict = Depends(get_current_user)):
         {"$group": {
             "_id": "$vendor",
             "total": {"$sum": 1},
-            "shortlisted": {"$sum": {"$cond": [{"$eq": ["$current_stage", "Shortlisted"]}, 1, 0]}},
+            "shortlisted": {"$sum": {"$cond": [{"$in": ["$current_stage", ["Screening Passed", "Shortlisted"]]}, 1, 0]}},
             "rejected": {"$sum": {"$cond": [{"$eq": ["$current_stage", "Rejected"]}, 1, 0]}},
             "selected": {"$sum": {"$cond": [{"$eq": ["$current_stage", "Selected"]}, 1, 0]}}
         }},
@@ -1477,8 +1477,10 @@ async def get_kpis_filtered(
     shortlisted = await db.candidates.count_documents(q(SHORTLISTED_QUERY))
     # Rejected = rejected at any level
     rejected = await db.candidates.count_documents(q(REJECTED_ANYWHERE))
-    # Interview Scheduled = has interview slot with future/today date
-    interviews_scheduled = await count_future_interviews(base if base else None)
+    # Interview Scheduled = has any valid Interview Slot value (L1 or L2) — sheet-driven.
+    interviews_scheduled = await db.candidates.count_documents(
+        {"$and": [base, HAS_INTERVIEW_SLOT]} if base else HAS_INTERVIEW_SLOT
+    )
     # Selected = final_status contains "selected"
     selected = await db.candidates.count_documents(q(SELECTED_QUERY))
     offer_released = await db.candidates.count_documents(q({"current_stage": "Offer Released"}))

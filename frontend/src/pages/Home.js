@@ -123,7 +123,7 @@ const Home = () => {
         case 'interviews': { const r = await axios.get(`${API_URL}/api/analytics/interviews`, { withCredentials: true }); data = selectedVendor ? r.data.filter(i => i.vendor?.toLowerCase() === selectedVendor.toLowerCase()) : r.data; title = selectedVendor ? `Interviews (${selectedVendor})` : 'Interviews'; break; }
         case 'selected': { const r = await axios.get(`${API_URL}/api/candidates?${vp}stage=Selected`, { withCredentials: true }); data = r.data; title = 'Selected Candidates'; break; }
         case 'active': { const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true }); data = r.data.filter(c => { const rs = (c.resume_status || '').toLowerCase(); const fs = (c.final_status || '').toLowerCase(); return !rs.includes('reject') && !fs.includes('reject'); }); title = selectedVendor ? `Active Candidates (${selectedVendor})` : 'Active Candidates'; break; }
-        case 'shortlisted': { const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true }); data = r.data.filter(c => { const rs = (c.resume_status || '').toLowerCase(); const fs = (c.final_status || '').toLowerCase(); return rs.includes('shortlist') && !fs.includes('reject'); }); title = selectedVendor ? `Shortlisted (${selectedVendor})` : 'Shortlisted Candidates'; break; }
+        case 'shortlisted': { const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true }); data = r.data.filter(c => { const rs = (c.resume_status || '').toLowerCase(); const fs = (c.final_status || '').toLowerCase(); return rs.includes('shortlist') && !fs.includes('reject'); }); title = selectedVendor ? `Screening Passed (${selectedVendor})` : 'Screening Passed Candidates'; break; }
         case 'rejected': { const r = await axios.get(`${API_URL}/api/candidates?${vp}`, { withCredentials: true }); data = r.data.filter(c => { const rs = (c.resume_status || '').toLowerCase(); const fs = (c.final_status || '').toLowerCase(); return rs.includes('reject') || fs.includes('reject'); }); title = selectedVendor ? `Rejected (${selectedVendor})` : 'Rejected Candidates'; break; }
         default: break;
       }
@@ -136,16 +136,16 @@ const Home = () => {
   const sel = kpis?.selected || 0, ofr = kpis?.offer_released || 0, jn = kpis?.joined || 0;
 
   const metrics = [
-    { key: 'shortlist', label: 'Shortlist Rate', value: tc > 0 ? ((sl / tc) * 100).toFixed(1) : 0, detail: `${sl} shortlisted of ${tc} total`, color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/20' },
-    { key: 'interview', label: 'Interview Rate', value: sl > 0 ? ((iv / sl) * 100).toFixed(1) : 0, detail: `${iv} interviews from ${sl} shortlisted`, color: 'text-cyan-400', bg: 'bg-cyan-500/8', border: 'border-cyan-500/20' },
+    { key: 'shortlist', label: 'Screening Pass Rate', value: tc > 0 ? ((sl / tc) * 100).toFixed(1) : 0, detail: `${sl} screening-passed of ${tc} total`, color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/20' },
+    { key: 'interview', label: 'Interview Rate', value: sl > 0 ? ((iv / sl) * 100).toFixed(1) : 0, detail: `${iv} interviews from ${sl} screening-passed`, color: 'text-cyan-400', bg: 'bg-cyan-500/8', border: 'border-cyan-500/20' },
     { key: 'selection', label: 'Selection Rate', value: tc > 0 ? ((sel / tc) * 100).toFixed(1) : 0, detail: `${sel} selected of ${tc} total`, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
     { key: 'offer', label: 'Offer Rate', value: sel > 0 ? (((ofr + jn) / sel) * 100).toFixed(1) : 0, detail: `${ofr + jn} offers from ${sel} selected`, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
     { key: 'conversion', label: 'Overall Conversion', value: tc > 0 ? (((sel + ofr + jn) / tc) * 100).toFixed(1) : 0, detail: `${sel + ofr + jn} converted of ${tc} total`, color: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/20' },
   ];
 
   const dropOffs = [
-    { stage: 'Submission \u2192 Shortlist', dropOff: tc > 0 ? (((tc - sl) / tc) * 100).toFixed(0) : 0, lost: tc - sl, from: tc, stageFrom: 'submission', stageTo: 'shortlist' },
-    { stage: 'Shortlist \u2192 Interview', dropOff: sl > 0 ? (((sl - iv) / sl) * 100).toFixed(0) : 0, lost: sl - iv, from: sl, stageFrom: 'shortlist', stageTo: 'interview' },
+    { stage: 'Submission \u2192 Screening Pass', dropOff: tc > 0 ? (((tc - sl) / tc) * 100).toFixed(0) : 0, lost: tc - sl, from: tc, stageFrom: 'submission', stageTo: 'shortlist' },
+    { stage: 'Screening Pass \u2192 Interview', dropOff: sl > 0 ? (((sl - iv) / sl) * 100).toFixed(0) : 0, lost: sl - iv, from: sl, stageFrom: 'shortlist', stageTo: 'interview' },
     { stage: 'Interview \u2192 Selected', dropOff: iv > 0 ? (((iv - sel) / iv) * 100).toFixed(0) : 0, lost: iv - sel, from: iv, stageFrom: 'interview', stageTo: 'selected' },
     { stage: 'Selected \u2192 Offer', dropOff: sel > 0 ? (((sel - ofr - jn) / sel) * 100).toFixed(0) : 0, lost: sel - ofr - jn, from: sel, stageFrom: 'selected', stageTo: 'offer' },
   ];
@@ -168,7 +168,7 @@ const Home = () => {
     let fill = '#0EA5E9';
     if (s.includes('reject')) fill = '#EF4444';
     else if (s.includes('select') || s.includes('offer') || s.includes('join')) fill = '#10B981';
-    else if (s.includes('shortlist')) fill = '#8B5CF6';
+    else if (s.includes('shortlist') || s.includes('screening')) fill = '#8B5CF6';
     else if (s.includes('interview') || s.includes('l1') || s.includes('l2')) fill = '#F59E0B';
     else if (s.includes('new') || s.includes('submit')) fill = '#3B82F6';
     return { ...d, fill };
@@ -244,12 +244,12 @@ const Home = () => {
         <KPICard testId="kpi-total-candidates" title="Total Candidates" value={kpis?.total_candidates || 0} icon={Users} subtitle="All submitted profiles" accent="cyan" onClick={() => openKPIModal('candidates')} />
         <KPICard testId="kpi-total-openings" title="Total Openings" value={kpis?.total_openings || 0} icon={Briefcase} subtitle="Active job positions" accent="cyan" onClick={() => openKPIModal('openings')} />
         <KPICard testId="kpi-active-candidates" title="Active Candidates" value={kpis?.active_candidates || 0} subtitle="Not rejected at any stage" description="Excludes resume & final rejections" accent="cyan" onClick={() => openKPIModal('active')} />
-        <KPICard testId="kpi-shortlisted" title="Shortlisted" value={kpis?.shortlisted || 0} subtitle="Resume screening passed" description="Approved by hiring manager" accent="violet" onClick={() => openKPIModal('shortlisted')} />
+        <KPICard testId="kpi-shortlisted" title="Screening Passed" value={kpis?.shortlisted || 0} subtitle="Resume screening passed" description="Approved by hiring manager" accent="violet" onClick={() => openKPIModal('shortlisted')} />
       </div>
 
       {/* KPI Row 2: Pipeline continuation */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <KPICard testId="kpi-interviews-scheduled" title="Interviews Scheduled" value={kpis?.interviews_scheduled || 0} icon={Calendar} subtitle="Today or upcoming slots" accent="amber" onClick={() => openKPIModal('interviews')} />
+        <KPICard testId="kpi-interviews-scheduled" title="Interviews Scheduled" value={kpis?.interviews_scheduled || 0} icon={Calendar} subtitle="Has valid interview slot" accent="amber" onClick={() => openKPIModal('interviews')} />
         <KPICard testId="kpi-selected" title="Selected" value={kpis?.selected || 0} icon={CheckCircle} subtitle="Final status cleared" accent="green" onClick={() => openKPIModal('selected')} />
         <KPICard testId="kpi-rejected" title="Rejected" value={kpis?.rejected || 0} subtitle="At any hiring stage" description="Resume or final stage rejection" accent="red" onClick={() => openKPIModal('rejected')} />
       </div>
@@ -327,7 +327,7 @@ const Home = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead><tr className="border-b border-[var(--border-default)]">
-              {['Vendor','Total','Shortlisted','Rejected','Selected','Shortlist %','Selection %'].map(h => (
+              {['Vendor','Total','Screening Passed','Rejected','Selected','Screening Pass %','Selection %'].map(h => (
                 <th key={h} className="text-left py-3 px-3 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-semibold">{h}</th>
               ))}
             </tr></thead>
@@ -351,7 +351,7 @@ const Home = () => {
       {/* Vendor Breakdown Chart */}
       <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-2xl p-5 ">
         <h3 className="text-base font-bold text-[var(--text-primary)] mb-1">Vendor Breakdown</h3>
-        <p className="text-xs text-[var(--text-muted)] mb-4">Comparison of total, shortlisted, and selected per vendor</p>
+        <p className="text-xs text-[var(--text-muted)] mb-4">Comparison of total, screening-passed, and selected per vendor</p>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={vendorData} barCategoryGap="20%">
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
@@ -360,7 +360,7 @@ const Home = () => {
             <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid var(--border-default)', borderRadius: '10px', color: '#E8ECF1' }} />
             <Legend wrapperStyle={{ color: '#8896AB', fontSize: 12 }} />
             <Bar dataKey="total" fill={CHART_COLORS.total} name="Total" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="shortlisted" fill={CHART_COLORS.shortlisted} name="Shortlisted" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="shortlisted" fill={CHART_COLORS.shortlisted} name="Screening Passed" radius={[4, 4, 0, 0]} />
             <Bar dataKey="selected" fill={CHART_COLORS.selected} name="Selected" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -452,7 +452,7 @@ const Home = () => {
             <div className="p-5 overflow-y-auto max-h-[calc(85vh-80px)] space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-[var(--bg-raised)] rounded-xl p-3 border border-[var(--border-default)] text-center"><p className="text-[10px] text-[var(--text-muted)] mb-1">Total</p><p className="text-2xl font-bold text-[var(--text-primary)] font-mono">{vendorDetail?.total ?? analysisVendor.total}</p></div>
-                <div className="bg-violet-500/10 rounded-xl p-3 border border-violet-500/20 text-center"><p className="text-[10px] text-[var(--text-muted)] mb-1">Shortlisted</p><p className="text-2xl font-bold text-violet-400 font-mono">{vendorDetail?.shortlisted ?? analysisVendor.shortlisted}</p></div>
+                <div className="bg-violet-500/10 rounded-xl p-3 border border-violet-500/20 text-center"><p className="text-[10px] text-[var(--text-muted)] mb-1">Screening Passed</p><p className="text-2xl font-bold text-violet-400 font-mono">{vendorDetail?.shortlisted ?? analysisVendor.shortlisted}</p></div>
                 <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20 text-center"><p className="text-[10px] text-[var(--text-muted)] mb-1">Selected</p><p className="text-2xl font-bold text-emerald-400 font-mono">{vendorDetail?.selected ?? analysisVendor.selected}</p></div>
                 <div className="bg-red-500/10 rounded-xl p-3 border border-red-500/20 text-center"><p className="text-[10px] text-[var(--text-muted)] mb-1">Rejected</p><p className="text-2xl font-bold text-red-400 font-mono">{vendorDetail?.rejected ?? analysisVendor.rejected}</p></div>
               </div>
